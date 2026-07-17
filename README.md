@@ -99,3 +99,16 @@ A natural 3-way split for a 3-person team:
 | `scheduling-service` | Reference data — courses, timetables |
 | `attendance-service` | Transactional core — sessions, check-ins, reports |
 | `ai-vision-service` | Face verification — different skillset/interest area |
+
+
+# 1. Create a virtual environment named 'venv'
+python -m venv venv
+
+# 2. Activate the virtual environment
+.\venv\Scripts\Activate.ps1
+
+# 3. Re-install your project (this time it will install inside the venv)
+pip install -e .
+
+# 4. Now uvicorn will work perfectly
+uvicorn app.main:app --reload --port 8001
