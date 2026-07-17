@@ -1,0 +1,45 @@
+services:
+  scheduling-service:
+    build:
+      context: .
+      dockerfile: services/scheduling-service/Dockerfile
+    ports:
+      - "8001:8000"
+    env_file:
+      - services/scheduling-service/.env
+    volumes:
+      - ./services/scheduling-service/app:/app/app
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  attendance-service:
+    build:
+      context: .
+      dockerfile: services/attendance-service/Dockerfile
+    ports:
+      - "8002:8000"
+    env_file:
+      - services/attendance-service/.env
+    environment:
+      - SCHEDULING_SERVICE_URL=http://scheduling-service:8000
+      - AI_VISION_SERVICE_URL=http://ai-vision-service:8000
+    volumes:
+      - ./services/attendance-service/app:/app/app
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - scheduling-service
+      - ai-vision-service
+
+  ai-vision-service:
+    build:
+      context: .
+      dockerfile: services/ai-vision-service/Dockerfile
+    ports:
+      - "8003:8000"
+    env_file:
+      - services/ai-vision-service/.env
+    volumes:
+      - ./services/ai-vision-service/app:/app/app
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
