@@ -1,21 +1,52 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from uuid import UUID
 
+from shared_core.database.connection import get_db
 from shared_core.auth.jwt import get_current_user
-from shared_core.schemas.session import CheckInRequest, RandomCheckRequest
+from shared_core.auth.rbac import require_role
+from shared_core.models.identity import User
+from pydantic import BaseModel
+from typing import Optional
 
 from app.services import attendance_service
 
 router = APIRouter(prefix="/checkin", tags=["checkin"])
 
+class CheckInRequest(BaseModel):
+    lecture_session_id: UUID
+    latitude: float
+    longitude: float
+
+class RandomCheckRequest(CheckInRequest):
+    verification_window_id: UUID
+    face_image_base64: str
 
 @router.post("/tick")
-def check_in_tick(payload: CheckInRequest, user: dict = Depends(get_current_user)):
-    """The start-of-lecture tick: location only, no face verification."""
-    return attendance_service.record_check_in(student_id=user["sub"], payload=payload)
+def record_check_in_tick(
+    payload: CheckInRequest,
+    current_user: User = Depends(require_role(["student"])),
+    db: Session = Depends(get_db)
+):
+    try:
+        return attendance_service.record_check_in(db, current_user.id, payload)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/random-check", status_code=status.HTTP_202_ACCEPTED)
+async def record_random_check(
+    payload: RandomCheckRequest,
+    current_user: User = Depends(require_role(["student"])),
+    db: Session = Depends(get_db)
+):
+    return await attendance_service.record_random_check(db, current_user.id, payload)
 
-@router.post("/random-check")
-def random_check(payload: RandomCheckRequest, user: dict = Depends(get_current_user)):
-    """The mid-lecture window: requires both face verification (delegated
-    to ai-vision-service) and a location check together."""
-    return attendance_service.record_random_check(student_id=user["sub"], payload=payload)
+@router.get("/windows/active")
+def get_active_windows(
+    lecture_session_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return attendance_service.get_active_windows(db, lecture_session_id)

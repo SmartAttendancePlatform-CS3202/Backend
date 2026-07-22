@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from app.services import matching_service
 
-router = APIRouter(tags=["verify"])
+router = APIRouter(tags=["verification"])
 
 
 class VerifyRequest(BaseModel):
@@ -11,20 +11,28 @@ class VerifyRequest(BaseModel):
     face_image_base64: str
 
 
-class VerifyResponse(BaseModel):
-    is_match: bool
-    confidence: float
+class RegisterRequest(BaseModel):
+    student_id: str
+    face_image_base64: str
 
 
-@router.post("/verify", response_model=VerifyResponse)
-def verify(payload: VerifyRequest):
-    """Called internally by attendance-service during a random check.
-    Not exposed to the mobile app directly."""
-    return matching_service.verify(payload.student_id, payload.face_image_base64)
+@router.post("/verify", dependencies=[Depends(verify_internal_key)])
+def verify_face(
+    payload: VerifyRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        return matching_service.verify_face(db, payload.student_id, payload.face_image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/register")
-def register(student_id: str, face_image_base64: str):
-    """Called during mobile onboarding to create the student's
-    face_profiles reference embedding."""
-    return matching_service.register(student_id, face_image_base64)
+@router.post("/register", dependencies=[Depends(verify_internal_key)], status_code=status.HTTP_201_CREATED)
+def register_face(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        return matching_service.register_face(db, payload.student_id, payload.face_image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
