@@ -1,7 +1,7 @@
 from uuid import UUID
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from shared_core.models.departments import Department, AcademicYear
+from shared_core.models.identity import Department, AcademicYear
 
 def get_all_departments(db: Session, skip: int = 0, limit: int = 100) -> List[Department]:
     return db.query(Department).offset(skip).limit(limit).all()

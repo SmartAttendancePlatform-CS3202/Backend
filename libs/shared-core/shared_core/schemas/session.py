@@ -1,5 +1,7 @@
 from uuid import UUID
-from pydantic import BaseModel
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
 class CheckInRequest(BaseModel):
     lecture_session_id: UUID

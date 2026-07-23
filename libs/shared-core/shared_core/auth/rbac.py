@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -10,10 +10,17 @@ from shared_core.models.identity import User
 from .jwt import get_current_user
 
 
-def require_role(*allowed_roles: str) -> Callable:
+def require_role(*allowed_roles: str | Iterable[str]) -> Callable:
     """Create a FastAPI dependency that allows only the listed roles."""
 
-    normalized_roles = {role.lower() for role in allowed_roles}
+    flattened_roles: list[str] = []
+    for role in allowed_roles:
+        if isinstance(role, str):
+            flattened_roles.append(role)
+        else:
+            flattened_roles.extend(str(item) for item in role)
+
+    normalized_roles = {role.lower() for role in flattened_roles}
 
     def role_checker(current_user: User = Depends(get_current_user)) -> User:
         user_role = getattr(current_user.role, "value", current_user.role)
