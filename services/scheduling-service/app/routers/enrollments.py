@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from shared_core.database.connection import get_db
+from shared_core.db.session import get_db
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.enrollment import EnrollmentCreate, EnrollmentOut
 from shared_core.models.identity import User

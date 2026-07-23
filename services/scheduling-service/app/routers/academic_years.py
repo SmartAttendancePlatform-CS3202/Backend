@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
-from shared_core.database.connection import get_db
+from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.academic_year import AcademicYearOut, AcademicYearCreate

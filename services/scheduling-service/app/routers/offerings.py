@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List
 
-from shared_core.database.connection import get_db
+from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.course import CourseOfferingOut, CourseOfferingCreate, CourseOfferingUpdate

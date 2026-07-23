@@ -6,7 +6,7 @@ import base64
 from uuid import UUID
 import logging
 from sqlalchemy.orm import Session
-from shared_core.database.connection import SessionLocal
+from shared_core.db.session import SessionLocal
 from shared_core.schemas.events import FaceVerificationTask
 from app.services import matching_service
 from shared_core.models.attendance import AttendanceVerificationAttempt
