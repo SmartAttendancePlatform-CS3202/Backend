@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
       - run: pip install ./libs/shared-core
       - run: pip install -e ./services/attendance-service
-      - run: pip install pytest
+      - run: pip install pytest httpx
       - run: pytest services/attendance-service/tests
 
   build-and-push:

@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
       - run: pip install ./libs/shared-core
       - run: pip install -e ./services/ai-vision-service
-      - run: pip install pytest
+      - run: pip install pytest httpx
       - run: pytest services/ai-vision-service/tests
 
   build-and-push:
