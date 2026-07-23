@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
       - run: pip install ./libs/shared-core
       - run: pip install -e ./services/scheduling-service
-      - run: pip install pytest
+      - run: pip install pytest httpx
       - run: pytest services/scheduling-service/tests
 
   build-and-push:
