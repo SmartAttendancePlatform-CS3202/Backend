@@ -21,4 +21,3 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 exclude = ["migrations*"]
-Your local attendance-service/pyp
