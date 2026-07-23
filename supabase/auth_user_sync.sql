@@ -13,7 +13,8 @@ begin
       nullif(split_part(new.email, '@', 1), ''),
       'student'
     ),
-    'student'::public.user_role
+    coalesce(new.raw_user_meta_data ->> 'role', 'student')::public.user_role
+
   )
   on conflict (id) do nothing;
 
