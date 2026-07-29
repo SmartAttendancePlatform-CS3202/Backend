@@ -11,8 +11,14 @@ dependencies = [
     "aio-pika>=9.0",
     "deepface>=0.0.93",
     "opencv-python-headless>=4.9",
+    "tf-keras",
+    "psycopg2-binary>=2.9"
 ]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

@@ -6,7 +6,7 @@ import base64
 from uuid import UUID
 import logging
 from sqlalchemy.orm import Session
-from shared_core.db.session import SessionLocal
+from shared_core.db.session import get_session_factory
 from shared_core.schemas.events import FaceVerificationTask
 from app.services import matching_service
 from shared_core.models.attendance import AttendanceVerificationAttempt
@@ -27,7 +27,7 @@ async def process_message(message: aio_pika.IncomingMessage):
             # Process face verification
             # Since this is an async context, we should run synchronous DB/ML operations in a threadpool,
             # but for simplicity, we'll just run it directly. Fastapi/SQLAlchemy handles some synchronous calls well enough for a PoC.
-            db = SessionLocal()
+            db = get_session_factory()()
             try:
                 result = matching_service.verify_face(db, task.student_id, task.face_image_base64)
                 
@@ -71,7 +71,19 @@ async def process_message(message: aio_pika.IncomingMessage):
 async def init_rabbitmq_consumer():
     global _connection, _channel
     rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost/")
-    _connection = await aio_pika.connect_robust(rabbitmq_url)
+    
+    max_retries = 10
+    retry_delay = 5
+    for attempt in range(max_retries):
+        try:
+            _connection = await aio_pika.connect_robust(rabbitmq_url)
+            break
+        except Exception as e:
+            logger.warning(f"RabbitMQ connection failed (attempt {attempt+1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(retry_delay)
+            
     _channel = await _connection.channel()
     
     queue_name = os.environ.get("VERIFICATION_QUEUE_NAME", "face_verification_queue")
