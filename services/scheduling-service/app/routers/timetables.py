@@ -1,13 +1,26 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from typing import List
 
+from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
-
-from app.services import course_service
+from shared_core.auth.rbac import require_role
+from shared_core.schemas.course import CourseOfferingOut
+from shared_core.models.identity import User
+from app.services import timetable_service
 
 router = APIRouter(prefix="/timetables", tags=["timetables"])
 
+@router.get("/me", response_model=List[CourseOfferingOut])
+def get_my_timetable(
+    current_user: User = Depends(require_role(["student"])),
+    db: Session = Depends(get_db)
+):
+    return timetable_service.get_timetable_for_student(db, current_user.id)
 
-@router.get("/me")
-def my_timetable(user: dict = Depends(get_current_user)):
-    """Returns the caller's enrolled course offerings and lecture schedule."""
-    return course_service.get_timetable_for_student(user["sub"])
+@router.get("/lecturer/me", response_model=List[CourseOfferingOut])
+def get_my_lecturer_timetable(
+    current_user: User = Depends(require_role(["lecturer"])),
+    db: Session = Depends(get_db)
+):
+    return timetable_service.get_timetable_for_lecturer(db, current_user.id)

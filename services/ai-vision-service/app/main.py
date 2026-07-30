@@ -1,12 +1,20 @@
-from fastapi import Depends, FastAPI
-
-from shared_core.auth.rbac import verify_internal_key
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
 from app.routers import verify
+from app.rabbitmq.consumer import init_rabbitmq_consumer, close_rabbitmq_consumer
 
-app = FastAPI(title="AI Vision Service")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await init_rabbitmq_consumer()
+    yield
+    # Shutdown
+    await close_rabbitmq_consumer()
 
-app.include_router(verify.router, dependencies=[Depends(verify_internal_key)])
+app = FastAPI(title="AI Vision Service", lifespan=lifespan)
+
+app.include_router(verify.router)
 
 
 @app.get("/health")

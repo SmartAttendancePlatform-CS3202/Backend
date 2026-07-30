@@ -3,10 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY libs/shared-core /shared-core
-RUN pip install --no-cache-dir /shared-core
+RUN pip install --default-timeout=1000 --no-cache-dir /shared-core
 
 COPY services/attendance-service/pyproject.toml .
-RUN pip install --no-cache-dir .
+RUN pip install --default-timeout=1000 --no-cache-dir .
 
 COPY services/attendance-service/app ./app
 
