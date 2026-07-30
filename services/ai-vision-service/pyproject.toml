@@ -12,7 +12,9 @@ dependencies = [
     "deepface>=0.0.93",
     "opencv-python-headless>=4.9",
     "tf-keras",
-    "psycopg2-binary>=2.9"
+    "psycopg2-binary>=2.9",
+    "httpx>=0.27",
+    "pytest>=8.0"
 ]
 
 [build-system]
