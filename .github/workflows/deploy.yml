@@ -1,0 +1,38 @@
+name: Deploy to Azure VM
+
+on:
+  workflow_run:
+    workflows: ["attendance-service", "scheduling-service", "ai-vision-service"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Azure VM via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+        run: |
+          # Set up SSH key
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+          # Ensure the application directory exists on the VM
+          ssh -i ~/.ssh/id_rsa "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
+
+          # Copy docker-compose.prod.yml to VM as docker-compose.yml
+          scp -i ~/.ssh/id_rsa docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.yml"
+
+          # Pull the latest images and restart the services
+          ssh -i ~/.ssh/id_rsa "$SSH_USERNAME@$SSH_HOST" "cd ~/app && docker compose pull && docker compose up -d"
