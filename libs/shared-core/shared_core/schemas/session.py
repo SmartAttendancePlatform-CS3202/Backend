@@ -1,12 +1,15 @@
-from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
 
 class CheckInRequest(BaseModel):
     lecture_session_id: UUID
     latitude: float
     longitude: float
+
 
 class RandomCheckRequest(BaseModel):
     verification_window_id: UUID
@@ -14,10 +17,16 @@ class RandomCheckRequest(BaseModel):
     longitude: float
     face_image_base64: str
 
+
 class SessionCreate(BaseModel):
     course_offering_id: UUID
+    venue_id: Optional[UUID] = None
     verification_method_override: Optional[str] = None
+    scheduled_at: datetime
+    duration_mins: int
     notes: Optional[str] = None
+    session_number: int
+
 
 class LectureSessionOut(BaseModel):
     id: UUID
@@ -31,21 +40,9 @@ class LectureSessionOut(BaseModel):
     notes: Optional[str] = None
     session_number: int
     created_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
-class VerificationWindowOut(BaseModel):
-    id: UUID
-    lecture_session_id: UUID
-    window_type: str
-    scheduled_open_at: datetime
-    scheduled_close_at: datetime
-    actual_opened_at: Optional[datetime] = None
-    actual_closed_at: Optional[datetime] = None
-    is_active: bool
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
 
 class AttendanceRecordOut(BaseModel):
     id: UUID
@@ -61,8 +58,9 @@ class AttendanceRecordOut(BaseModel):
     overridden_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class AttemptOut(BaseModel):
     id: UUID
@@ -81,5 +79,5 @@ class AttemptOut(BaseModel):
     failure_reason: Optional[str] = None
     device_info: Optional[dict] = None
     attempted_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)

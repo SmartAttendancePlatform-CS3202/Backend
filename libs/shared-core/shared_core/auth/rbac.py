@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import os
+from collections.abc import Callable
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -35,10 +36,15 @@ def require_role(*allowed_roles: str | Iterable[str]) -> Callable:
 
     return role_checker
 
-def verify_internal_key(x_internal_key: str = Header(...)):
-    settings = get_settings()
-    if x_internal_key != settings.internal_api_key:
+
+def verify_internal_key(
+    x_internal_key: str | None = Header(default=None, alias="X-Internal-Key"),
+) -> None:
+    """Require a valid shared internal API key for service-to-service calls."""
+
+    expected = os.getenv("INTERNAL_API_KEY", "")
+    if not expected or x_internal_key != expected:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid internal API key",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing internal API key",
         )

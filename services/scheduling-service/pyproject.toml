@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.13",
     "psycopg2-binary>=2.9",
     "shared-core",
+    "httpx>=0.27",
 ]
 
 [build-system]
@@ -19,3 +20,4 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+exclude = ["migrations*"]

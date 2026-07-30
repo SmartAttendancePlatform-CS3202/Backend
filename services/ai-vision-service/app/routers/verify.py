@@ -1,6 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from shared_core.db.session import get_db
+from shared_core.auth.rbac import verify_internal_key
 from app.services import matching_service
 
 router = APIRouter(tags=["verification"])
