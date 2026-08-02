@@ -1,12 +1,16 @@
 name: Deploy to K3s Cluster
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/**"
+      - ".github/workflows/deploy.yml"
   workflow_run:
     workflows: ["attendance-service", "scheduling-service", "ai-vision-service"]
     types:
       - completed
-    branches:
-      - main
 
 jobs:
   deploy:
