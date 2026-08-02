@@ -1,4 +1,4 @@
-name: Deploy to Azure VM
+name: Deploy to K3s Cluster
 
 on:
   workflow_run:
@@ -16,23 +16,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Azure VM via SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+      - name: Set up Kubeconfig
         run: |
-          # Set up SSH key
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
 
-          # Ensure the application directory exists on the VM
-          ssh -i ~/.ssh/id_rsa "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
+      - name: Replace DockerHub Username in Kubernetes Manifests
+        run: |
+          sed -i "s|DOCKERHUB_USERNAME_PLACEHOLDER|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/*.yaml
 
-          # Copy docker-compose.prod.yml to VM as docker-compose.yml
-          scp -i ~/.ssh/id_rsa docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.yml"
+      - name: Deploy to K3s Cluster
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/scheduling-service.yaml
+          kubectl apply -f k8s/attendance-service.yaml
+          kubectl apply -f k8s/ai-vision-service.yaml
+          kubectl apply -f k8s/ingress.yaml
 
-          # Pull the latest images and restart the services
-          ssh -i ~/.ssh/id_rsa "$SSH_USERNAME@$SSH_HOST" "cd ~/app && docker compose pull && docker compose up -d"
+      - name: Rollout Restart Deployments
+        run: |
+          kubectl rollout restart deployment/scheduling-service -n smart-attendance
+          kubectl rollout restart deployment/attendance-service -n smart-attendance
+          kubectl rollout restart deployment/ai-vision-service -n smart-attendance

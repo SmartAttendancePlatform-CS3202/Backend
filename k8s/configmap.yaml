@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  namespace: smart-attendance
+data:
+  SUPABASE_URL: "https://ywxuyhdvcvfqayckertu.supabase.co"
+  SCHEDULING_SERVICE_URL: "http://scheduling-service:8000"
+  AI_VISION_SERVICE_URL: "http://ai-vision-service:8000"
+  ATTENDANCE_SERVICE_URL: "http://attendance-service:8000"
