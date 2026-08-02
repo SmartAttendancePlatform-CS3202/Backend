@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smart-attendance-ingress
+  namespace: smart-attendance
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /scheduling(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: scheduling-service
+                port:
+                  number: 8000
+          - path: /attendance(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: attendance-service
+                port:
+                  number: 8000
+          - path: /vision(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ai-vision-service
+                port:
+                  number: 8000
