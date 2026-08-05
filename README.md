@@ -49,7 +49,18 @@ This starts all three services with live-reload:
 - `attendance-service` ➔ http://localhost:8002
 - `ai-vision-service` ➔ http://localhost:8003
 
-Each has interactive API docs at `/docs` once running.
+### Interactive API docs (Swagger)
+
+Open any service root (e.g. http://localhost:8001/) for an index linking all three Swagger UIs, or go directly to:
+
+| Service | Swagger UI | ReDoc |
+|---------|------------|-------|
+| Scheduling | http://localhost:8001/docs | http://localhost:8001/redoc |
+| Attendance | http://localhost:8002/docs | http://localhost:8002/redoc |
+| AI Vision | http://localhost:8003/docs | http://localhost:8003/redoc |
+
+**Testing authenticated routes:** click **Authorize** → paste a Supabase `access_token` into **BearerAuth**.  
+**AI Vision:** authorize with **InternalApiKey** = `INTERNAL_API_KEY` from `.env`.
 
 Run tests: `make test`. Apply migrations: `make migrate`. Tear down: `make down`.
 

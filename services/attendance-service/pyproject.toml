@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.27",
     "aio-pika>=9.0",
     "shared-core",
+    "prometheus-fastapi-instrumentator>=7.0",
 ]
 
 [build-system]

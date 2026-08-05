@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import APIKeyHeader
 
-from shared_core.config import get_settings
 from shared_core.models.identity import User
 
 from .jwt import get_current_user
+
+# Shown in Swagger "Authorize" for service-to-service routes (ai-vision).
+internal_api_key_header = APIKeyHeader(
+    name="X-Internal-Key",
+    auto_error=False,
+    scheme_name="InternalApiKey",
+    description="Shared INTERNAL_API_KEY from service .env (service-to-service only).",
+)
 
 
 def require_role(*allowed_roles: str | Iterable[str]) -> Callable:
@@ -38,7 +46,7 @@ def require_role(*allowed_roles: str | Iterable[str]) -> Callable:
 
 
 def verify_internal_key(
-    x_internal_key: str | None = Header(default=None, alias="X-Internal-Key"),
+    x_internal_key: str | None = Depends(internal_api_key_header),
 ) -> None:
     """Require a valid shared internal API key for service-to-service calls."""
 

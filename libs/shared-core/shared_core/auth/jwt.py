@@ -13,7 +13,12 @@ from shared_core.config import get_settings
 from shared_core.db.session import get_db
 from shared_core.models.identity import User
 
-security = HTTPBearer(auto_error=False)
+# Shown in Swagger "Authorize" as HTTP Bearer — paste a Supabase access token.
+security = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Supabase JWT access token. Get one via Supabase Auth (sign-in), then paste the access_token value.",
+)
 
 
 def get_current_user(
