@@ -7,3 +7,11 @@ class FaceVerificationTask(BaseModel):
     face_image_base64: str
     latitude: float
     longitude: float
+
+class FaceVerificationResult(BaseModel):
+    student_id: str
+    verification_window_id: UUID
+    latitude: float
+    longitude: float
+    is_match: bool
+    confidence: float
