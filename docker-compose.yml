@@ -59,8 +59,9 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
+    hostname: rabbitmq
     ports:
-      - "5672:5672"    # Main port for AMQP connections
+      - "5600:5672"    # Main port for AMQP connections (host mapped to 5600 to avoid Windows reserved port conflicts)
       - "15672:15672"  # Port for the RabbitMQ Web UI Dashboard
     environment:
       RABBITMQ_DEFAULT_USER: guest
