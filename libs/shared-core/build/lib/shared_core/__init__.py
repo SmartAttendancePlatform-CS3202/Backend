@@ -1,2 +1,2 @@
 """Shared core package for the FastAPI microservices."""
-#Hello
+# ci: trigger image rebuild
