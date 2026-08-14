@@ -11,6 +11,8 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "shared-core",
     "httpx>=0.27",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "prometheus-client>=0.20.0",
 ]
 
 [build-system]

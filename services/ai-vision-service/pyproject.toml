@@ -14,7 +14,9 @@ dependencies = [
     "tf-keras",
     "psycopg2-binary>=2.9",
     "httpx>=0.27",
-    "pytest>=8.0"
+    "pytest>=8.0",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "prometheus-client>=0.20.0",
 ]
 
 [build-system]

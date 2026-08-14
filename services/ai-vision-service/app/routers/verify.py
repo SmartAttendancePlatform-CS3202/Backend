@@ -19,23 +19,32 @@ class RegisterRequest(BaseModel):
     face_image_base64: str
 
 
-@router.post("/verify", dependencies=[Depends(verify_internal_key)])
+@router.post(
+    "/verify",
+    dependencies=[Depends(verify_internal_key)],
+    summary="Verify a face against a registered student embedding",
+)
 def verify_face(
     payload: VerifyRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         return matching_service.verify_face(db, payload.student_id, payload.face_image_base64)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@router.post("/register", dependencies=[Depends(verify_internal_key)], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    dependencies=[Depends(verify_internal_key)],
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a student's face embedding",
+)
 def register_face(
     payload: RegisterRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         return matching_service.register_face(db, payload.student_id, payload.face_image_base64)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
