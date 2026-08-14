@@ -6,8 +6,15 @@ import os
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.models.identity import User
+from prometheus_client import Counter
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+REGISTER_FACE_ATTEMPTS = Counter(
+    "register_face_attempt_count",
+    "Total number of student attempts categorized by status/reason",
+    ["reason"]
+)
 
 class RegisterFaceRequest(BaseModel):
     face_image_base64: str
@@ -26,6 +33,7 @@ async def register_face(
     from shared_core.config import get_settings
     settings = get_settings()
     
+    REGISTER_FACE_ATTEMPTS.labels(reason="attempts").inc()
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -36,8 +44,10 @@ async def register_face(
                 },
                 headers={"X-Internal-Key": settings.internal_api_key},
                 timeout=30.0
+                REGISTER_FACE_ATTEMPTS.labels(reason="success").inc()
             )
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError as e:
+        REGISTER_FACE_ATTEMPTS.labels(reason="failed").inc()
         raise HTTPException(status_code=500, detail=f"Failed to register face: {str(e)}")

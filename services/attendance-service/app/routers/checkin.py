@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+CHECKIN_ATTEMPTfrom fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -8,10 +8,17 @@ from shared_core.auth.rbac import require_role
 from shared_core.models.identity import User
 from pydantic import BaseModel
 from typing import Optional
+from prometheus_client import Counter 
 
 from app.services import attendance_service
 
 router = APIRouter(prefix="/checkin", tags=["checkin"])
+
+CHECKIN_ATTEMPT= Counter(
+    "checkin_attempt_count",
+    "Total number of student attempts categorized"
+    ["status"]
+)
 
 class CheckInRequest(BaseModel):
     lecture_session_id: UUID
@@ -28,11 +35,16 @@ def record_check_in_tick(
     current_user: User = Depends(require_role(["student"])),
     db: Session = Depends(get_db)
 ):
+
+    CHECKIN_ATTEMPT.labels(status="attempts").inc()
     try:
         return attendance_service.record_check_in(db, current_user.id, payload)
+        CHECKIN_ATTEMPT.labels(status="success").inc()
     except HTTPException as e:
+        CHECKIN_ATTEMPT.labels(status="failed").inc()
         raise e
     except Exception as e:
+        CHECKIN_ATTEMPT.labels(status="failed").inc()
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/random-check", status_code=status.HTTP_202_ACCEPTED)

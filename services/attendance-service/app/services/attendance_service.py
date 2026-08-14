@@ -9,6 +9,7 @@ from app.clients import scheduling_client
 from app.repositories import attendance_repository
 from app.utils.geofence import calculate_distance
 from app.rabbitmq.publisher import publish_verification_task
+from app.routers.checkin import RANDOM_CHECK_ATTEMPTS
 
 def start_session(db: Session, data: dict) -> LectureSession:
     # 1. Verify offering exists via scheduling_client
@@ -68,6 +69,7 @@ async def record_random_check(db: Session, student_id: str, payload):
     # 1. Ensure there's an active random window
     window = attendance_repository.get_open_window(db, payload.lecture_session_id, window_type="random_check")
     if not window:
+        RANDOM_CHECK_ATTEMPTS.labels(reason="no_active_window").inc()
         raise HTTPException(status_code=400, detail="No active random check window found for this session.")
         
     # 2. Geofence Distance Check (Synchronous)
@@ -97,6 +99,7 @@ async def record_random_check(db: Session, student_id: str, payload):
             "failure_reason": "Out of bounds"
         }
         attendance_repository.log_attempt(db, attempt_data)
+        RANDOM_CHECK_ATTEMPTS.labels(reason="out_of_bounds").inc()
         raise HTTPException(status_code=400, detail="Location check failed: Out of bounds.")
 
     # 3. Publish Face Verification Task (Asynchronous)
@@ -109,7 +112,8 @@ async def record_random_check(db: Session, student_id: str, payload):
     )
     
     await publish_verification_task(task)
-    
+
+    RANDOM_CHECK_ATTEMPTS.labels(reason="queued_success").inc()
     return {"status": "processing"}
 
 def get_student_attendance(db: Session, student_id: uuid.UUID):

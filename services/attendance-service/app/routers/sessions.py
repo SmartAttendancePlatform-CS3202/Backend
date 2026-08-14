@@ -9,8 +9,14 @@ from shared_core.auth.rbac import require_role
 from shared_core.models.identity import User
 from shared_core.schemas.session import LectureSessionOut, SessionCreate
 from app.services import attendance_service
+from promethes_client import Gauge
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+Active_SESSIONS = Gauge(
+    "active_sessions",
+    "Number of active lecture sessions"
+)
 
 @router.get("", response_model=List[LectureSessionOut])
 def list_sessions(
@@ -27,6 +33,7 @@ def start_session(
     current_user: User = Depends(require_role(["lecturer", "admin"])),
     db: Session = Depends(get_db)
 ):
+    ACTIVE_SESSIONS.inc()
     return attendance_service.start_session(db, data.model_dump())
 
 @router.get("/{id}", response_model=LectureSessionOut)
@@ -49,6 +56,7 @@ def end_session(
     session = attendance_service.end_session(db, id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    ACTIVE_SESSIONS.dec()
     return session
 
 @router.get("/{id}/live")
