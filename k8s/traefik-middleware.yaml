@@ -1,0 +1,29 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-scheduling-prefix
+  namespace: smart-attendance
+spec:
+  stripPrefix:
+    prefixes:
+      - /scheduling
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-attendance-prefix
+  namespace: smart-attendance
+spec:
+  stripPrefix:
+    prefixes:
+      - /attendance
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-vision-prefix
+  namespace: smart-attendance
+spec:
+  stripPrefix:
+    prefixes:
+      - /vision

@@ -24,6 +24,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: platform-config
+            - secretRef:
+                name: platform-secrets
           resources:
             requests:
               cpu: 100m

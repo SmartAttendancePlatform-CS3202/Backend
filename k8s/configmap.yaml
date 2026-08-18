@@ -8,3 +8,5 @@ data:
   SCHEDULING_SERVICE_URL: "http://scheduling-service:8000"
   AI_VISION_SERVICE_URL: "http://ai-vision-service:8000"
   ATTENDANCE_SERVICE_URL: "http://attendance-service:8000"
+  RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+  VERIFICATION_QUEUE_NAME: "face_verification_queue"
