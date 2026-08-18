@@ -1,0 +1,11 @@
+#!/bin/bash
+TARGET_DIR="${1:-.}"
+echo "$TARGET_DIR"
+
+old_ext="log"
+new_ext="bak"
+
+for file in "$TARGET_DIR"
+do
+	echo "sanka">>file
+done

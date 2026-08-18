@@ -37,6 +37,7 @@ jobs:
           kubectl apply -f k8s/scheduling-service.yaml
           kubectl apply -f k8s/attendance-service.yaml
           kubectl apply -f k8s/ai-vision-service.yaml
+          kubectl apply -f k8s/traefik-middleware.yaml
           kubectl apply -f k8s/ingress.yaml
 
       - name: Rollout Restart Deployments

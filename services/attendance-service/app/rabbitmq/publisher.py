@@ -14,7 +14,7 @@ async def init_rabbitmq():
     global _connection, _channel
     rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost/")
     
-    max_retries = 10
+    max_retries = 30
     retry_delay = 5
     for attempt in range(max_retries):
         try:
