@@ -6,6 +6,16 @@ from shared_core.auth.jwt import get_current_user
 from shared_core.models.identity import User
 from shared_core.openapi import API_INDEX_HTML, SWAGGER_UI_PARAMETERS, service_description
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # your web dashboard's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from app.routers import (
     courses,
     timetables,
