@@ -8,7 +8,15 @@ from shared_core.openapi import API_INDEX_HTML, SWAGGER_UI_PARAMETERS, service_d
 
 from app.routers import verify
 from app.rabbitmq.consumer import init_rabbitmq_consumer, close_rabbitmq_consumer
+from fastapi.middleware.cors import CORSMiddleware
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # your web dashboard's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 OPENAPI_TAGS = [
     {
         "name": "verification",
