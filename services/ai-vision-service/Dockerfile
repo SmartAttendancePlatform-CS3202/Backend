@@ -19,11 +19,11 @@ RUN apt-get update && apt-get install -y \
 
 # Install shared-core first
 COPY libs/shared-core /shared-core
-RUN pip install --default-timeout=1000 --no-cache-dir /shared-core
+RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 /shared-core
 
 # Install service dependencies
 COPY services/ai-vision-service/pyproject.toml .
-RUN pip install --default-timeout=1000 --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 .
 
 COPY services/ai-vision-service/app ./app
 

@@ -33,6 +33,19 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Allow frontend Instant Demo Mode to bypass JWT verification by providing a special token
+    if credentials.credentials in ["DEV_BYPASS_TOKEN_LECTURER", "DEV_BYPASS_TOKEN_ADMIN"]:
+        target_role = "lecturer" if "LECTURER" in credentials.credentials else "admin"
+        demo_user = db.execute(select(User).where(User.role == target_role, User.is_active == True)).scalars().first()
+        if demo_user:
+            setattr(demo_user, "claims", {})
+            return demo_user
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"No active {target_role} found in database for demo bypass",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     settings = get_settings()
     if not settings.supabase_jwt_secret:
         raise HTTPException(
