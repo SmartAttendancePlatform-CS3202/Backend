@@ -27,3 +27,4 @@ tf-keras
 prometheus-fastapi-instrumentator>=7.0
 prometheus-client>=0.20.0
 pytest>=8.0
+structlog>=24.1.0
