@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List
+from typing import List, Optional
 
 from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
@@ -20,8 +20,9 @@ ACTIVE_SESSIONS = Gauge(
 
 @router.get("", response_model=List[LectureSessionOut])
 def list_sessions(
-    offering_id: UUID = None,
-    skip: int = 0, limit: int = 100,
+    offering_id: Optional[UUID] = Query(None),
+    skip: int = 0,
+    limit: int = 100,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -33,8 +34,9 @@ def start_session(
     current_user: User = Depends(require_role(["lecturer", "admin"])),
     db: Session = Depends(get_db)
 ):
+    session = attendance_service.start_session(db, data.model_dump())
     ACTIVE_SESSIONS.inc()
-    return attendance_service.start_session(db, data.model_dump())
+    return session
 
 @router.get("/{id}", response_model=LectureSessionOut)
 def get_session(
