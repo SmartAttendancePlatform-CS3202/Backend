@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-vision-service
+  namespace: smart-attendance
+  labels:
+    app: ai-vision-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-vision-service
+  template:
+    metadata:
+      labels:
+        app: ai-vision-service
+    spec:
+      containers:
+        - name: ai-vision-service
+          image: DOCKERHUB_USERNAME_PLACEHOLDER/ai-vision-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: platform-config
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /docs
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /docs
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-vision-service
+  namespace: smart-attendance
+spec:
+  type: ClusterIP
+  selector:
+    app: ai-vision-service
+  ports:
+    - port: 8000
+      targetPort: 8000

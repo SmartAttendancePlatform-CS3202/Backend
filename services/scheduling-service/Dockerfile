@@ -4,10 +4,10 @@ WORKDIR /app
 
 # Install shared-core first (path dependency, built from repo root context)
 COPY libs/shared-core /shared-core
-RUN pip install --no-cache-dir /shared-core
+RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 /shared-core
 
 COPY services/scheduling-service/pyproject.toml .
-RUN pip install --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 .
 
 COPY services/scheduling-service/app ./app
 

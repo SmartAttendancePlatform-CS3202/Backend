@@ -9,7 +9,8 @@ dependencies = [
     "fastapi>=0.110",
     "pydantic>=2.0",
     "pydantic-settings",
-    "PyJWT>=2.8.0"
+    "PyJWT>=2.8.0",
+    "structlog>=24.1.0"
 ]
 
 [build-system]
@@ -19,3 +20,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["shared_core*"]
+
+[tool.pyright]
+venvPath = "../.."
+venv = ".venv"
+reportMissingImports = "warning"

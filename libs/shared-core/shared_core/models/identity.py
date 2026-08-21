@@ -19,6 +19,9 @@ class Department(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column(String, nullable=False)
+    code: Mapped[str | None] = mapped_column(String)
+    faculty_head: Mapped[str | None] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text)
     faculty_name: Mapped[str | None] = mapped_column(String)
     contact_number: Mapped[str | None] = mapped_column(String)
 

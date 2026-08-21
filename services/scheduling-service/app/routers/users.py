@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List
+from typing import List, Optional
 
 from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
@@ -11,6 +11,36 @@ from shared_core.models.identity import User
 from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+@router.get("", response_model=List[UserOut])
+def list_users(
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(require_role(["admin"])),
+    db: Session = Depends(get_db)
+):
+    return user_service.get_all_users(db, role=role, status=status, skip=skip, limit=limit)
+
+@router.get("/lecturers", response_model=List[LecturerOut])
+def list_lecturers(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(require_role(["admin", "lecturer"])),
+    db: Session = Depends(get_db)
+):
+    return user_service.get_all_lecturers(db, skip=skip, limit=limit)
+
+@router.get("/students", response_model=List[StudentOut])
+def list_students(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(require_role(["admin", "lecturer"])),
+    db: Session = Depends(get_db)
+):
+    return user_service.get_all_students(db, skip=skip, limit=limit)
+
 
 @router.get("/students/me", response_model=StudentOut)
 def get_my_student_profile(

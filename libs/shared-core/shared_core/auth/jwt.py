@@ -13,7 +13,12 @@ from shared_core.config import get_settings
 from shared_core.db.session import get_db
 from shared_core.models.identity import User
 
-security = HTTPBearer(auto_error=False)
+# Shown in Swagger "Authorize" as HTTP Bearer — paste a Supabase access token.
+security = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Supabase JWT access token. Get one via Supabase Auth (sign-in), then paste the access_token value.",
+)
 
 
 def get_current_user(
@@ -25,6 +30,19 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Allow frontend Instant Demo Mode to bypass JWT verification by providing a special token
+    if credentials.credentials in ["DEV_BYPASS_TOKEN_LECTURER", "DEV_BYPASS_TOKEN_ADMIN"]:
+        target_role = "lecturer" if "LECTURER" in credentials.credentials else "admin"
+        demo_user = db.execute(select(User).where(User.role == target_role, User.is_active == True)).scalars().first()
+        if demo_user:
+            setattr(demo_user, "claims", {})
+            return demo_user
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"No active {target_role} found in database for demo bypass",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

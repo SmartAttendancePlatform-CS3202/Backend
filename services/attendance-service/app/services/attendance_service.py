@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from shared_core.models.attendance import LectureSession, AttendanceRecord, AttendanceVerificationAttempt
 from shared_core.schemas.events import FaceVerificationTask
-from shared_core.models.enums import AttemptStatus
+from shared_core.models.enums import AttemptStatus, WindowType
 from app.clients import scheduling_client
 from app.repositories import attendance_repository
 from app.utils.geofence import calculate_distance
 from app.rabbitmq.publisher import publish_verification_task
+from app.routers.checkin import RANDOM_CHECK_ATTEMPTS
 
 def start_session(db: Session, data: dict) -> LectureSession:
     # 1. Verify offering exists via scheduling_client
@@ -32,11 +33,11 @@ def end_session(db: Session, session_id: uuid.UUID) -> Optional[LectureSession]:
 def get_session(db: Session, session_id: uuid.UUID) -> Optional[LectureSession]:
     return attendance_repository.get_session(db, session_id)
 
-def get_sessions(db: Session, offering_id: uuid.UUID = None, skip: int = 0, limit: int = 100) -> List[LectureSession]:
+def get_sessions(db: Session, offering_id: Optional[uuid.UUID] = None, skip: int = 0, limit: int = 100) -> List[LectureSession]:
     return attendance_repository.get_sessions(db, offering_id, skip, limit)
 
 def get_active_windows(db: Session, lecture_session_id: uuid.UUID) -> dict:
-    check_in_window = attendance_repository.get_open_window(db, lecture_session_id, "first_check_in")
+    check_in_window = attendance_repository.get_open_window(db, lecture_session_id, WindowType.first_check_in.value)
     random_window = attendance_repository.get_open_window(db, lecture_session_id, "random_check")
     
     return {
@@ -44,8 +45,8 @@ def get_active_windows(db: Session, lecture_session_id: uuid.UUID) -> dict:
         "random_check_window": random_window
     }
 
-def record_check_in(db: Session, student_id: str, payload):
-    window = attendance_repository.get_open_window(db, payload.lecture_session_id, window_type="first_check_in")
+def record_check_in(db: Session, student_id: uuid.UUID, payload):
+    window = attendance_repository.get_open_window(db, payload.lecture_session_id, window_type=WindowType.first_check_in.value)
     if not window:
         raise HTTPException(status_code=400, detail="No active check-in window found for this session.")
         
@@ -64,17 +65,26 @@ def record_check_in(db: Session, student_id: str, payload):
     
     return attempt
 
-async def record_random_check(db: Session, student_id: str, payload):
+async def record_random_check(db: Session, student_id: uuid.UUID, payload):
     # 1. Ensure there's an active random window
     window = attendance_repository.get_open_window(db, payload.lecture_session_id, window_type="random_check")
     if not window:
+        RANDOM_CHECK_ATTEMPTS.labels(reason="no_active_window").inc()
         raise HTTPException(status_code=400, detail="No active random check window found for this session.")
         
     # 2. Geofence Distance Check (Synchronous)
     # Fetch venue details to get coordinates. We need venue info from the session.
     session = attendance_repository.get_session(db, payload.lecture_session_id)
+    if not session:
+        RANDOM_CHECK_ATTEMPTS.labels(reason="session_not_found").inc()
+        raise HTTPException(status_code=404, detail="Lecture session not found.")
+
     # We should get the venue from scheduling_service
     offering = scheduling_client.get_offering(session.course_offering_id)
+    if not offering:
+        RANDOM_CHECK_ATTEMPTS.labels(reason="offering_not_found").inc()
+        raise HTTPException(status_code=404, detail="Course offering not found.")
+
     venue_id = offering.get('venue_id')
     # If there's no venue_id or we can't fetch it, we might skip location or fail. Assuming we have venue details in offering or can fetch from scheduling service (need venue endpoint). For now, let's just do a basic stub or assume radius is 30m and we have venue lat/lon in boundary_data.
     # To properly calculate distance, we need the venue's boundary_data (center coordinates).
@@ -97,6 +107,7 @@ async def record_random_check(db: Session, student_id: str, payload):
             "failure_reason": "Out of bounds"
         }
         attendance_repository.log_attempt(db, attempt_data)
+        RANDOM_CHECK_ATTEMPTS.labels(reason="out_of_bounds").inc()
         raise HTTPException(status_code=400, detail="Location check failed: Out of bounds.")
 
     # 3. Publish Face Verification Task (Asynchronous)
@@ -109,7 +120,8 @@ async def record_random_check(db: Session, student_id: str, payload):
     )
     
     await publish_verification_task(task)
-    
+
+    RANDOM_CHECK_ATTEMPTS.labels(reason="queued_success").inc()
     return {"status": "processing"}
 
 def get_student_attendance(db: Session, student_id: uuid.UUID):
@@ -117,6 +129,9 @@ def get_student_attendance(db: Session, student_id: uuid.UUID):
 
 def get_attendance_attempts(db: Session, record_id: uuid.UUID):
     return attendance_repository.get_attempts(db, record_id)
+
+def get_recent_attempts(db: Session, offering_id: Optional[uuid.UUID] = None):
+    return attendance_repository.get_recent_attempts(db, offering_id)
 
 def override_record(db: Session, record_id: uuid.UUID, user_id: uuid.UUID, override_data: dict):
     override_data["is_manually_overridden"] = True

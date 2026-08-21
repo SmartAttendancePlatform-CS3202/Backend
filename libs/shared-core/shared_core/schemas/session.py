@@ -25,7 +25,12 @@ class SessionCreate(BaseModel):
     scheduled_at: datetime
     duration_mins: int
     notes: Optional[str] = None
-    session_number: int
+    session_number: Optional[int] = None
+
+
+class AttendanceOverrideRequest(BaseModel):
+    status: str
+    override_reason: Optional[str] = None
 
 
 class LectureSessionOut(BaseModel):
