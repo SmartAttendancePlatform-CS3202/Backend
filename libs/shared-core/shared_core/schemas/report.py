@@ -27,3 +27,8 @@ class StudentSummary(BaseModel):
     student_id: UUID
     overall_attendance_percentage: float
     course_breakdown: Dict[str, float]
+
+class WeeklyTrendItem(BaseModel):
+    week: str
+    attendance_rate: float
+    total_students: int

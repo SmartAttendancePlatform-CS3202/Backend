@@ -31,6 +31,7 @@ class GeofenceShape(str, enum.Enum):
     polygon = "polygon"
 
 class WindowType(str, enum.Enum):
+    first_check_in = "first_check_in"
     check_in = "check_in"
     random_check = "random_check"
 

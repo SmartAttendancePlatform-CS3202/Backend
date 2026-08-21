@@ -12,9 +12,11 @@ class AcademicYearBase(BaseModel):
 class AcademicYearCreate(AcademicYearBase):
     pass
 
-class AcademicYearUpdate(AcademicYearBase):
+class AcademicYearUpdate(BaseModel):
     year_level: Optional[int] = None
     name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class AcademicYearOut(AcademicYearBase):
     id: UUID
