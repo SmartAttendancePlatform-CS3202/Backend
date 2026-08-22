@@ -33,3 +33,9 @@ def update_student(db: Session, student_id: UUID, update_data: dict):
         return None
     return user_repository.update_student(db, student=student, update_data=update_data)
 
+
+
+def update_user_status(db: Session, user_id: UUID, status: str):
+    user = user_repository.get_user(db, user_id)
+    if not user: return None
+    return user_repository.update_user(db, user=user, update_data={"status": status, "is_active": status == "active"})

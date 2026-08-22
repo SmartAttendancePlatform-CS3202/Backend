@@ -1,83 +1,39 @@
-# Smart Attendance Platform — Backend
+# Smart Attendance Backend — working revision
 
-PID 12 / Group 24 — Smart Attendance and Classroom Access Platform with
-Face Verification and Geofenced Check-In.
+This revision keeps the existing single Supabase PostgreSQL database and existing tables. No LMS-content tables were changed.
 
-Three FastAPI microservices sharing one Python package (`libs/shared-core`)
-for auth/RBAC/config/schemas, deployed on a multi-node **K3s Kubernetes Cluster** with **NGINX Ingress** and automated **GitHub Actions CI/CD**.
+## Services
+- scheduling-service: courses, offerings, venues, enrollments, timetables, user/profile operations
+- attendance-service: sessions, circle/square geofencing, check-in, attendance state, reports, audit-safe overrides
+- ai-vision-service: face embedding registration + verification; never writes attendance records
+- RabbitMQ: asynchronous face-verification request/result flow
+- Kong: optional/default API gateway for `/scheduling/*` and `/attendance/*`; AI Vision has no public gateway route
 
-```
-backend/
-├── .github/workflows/       # CI workflows (test + Docker push) & K3s CD deployment workflow
-├── k8s/                     # Kubernetes Manifests (Namespace, ConfigMap, Deployments, Services, Ingress)
-├── libs/shared-core/        # Shared auth (JWT + RBAC), config, DB client, Pydantic schemas
-└── services/
-    ├── scheduling-service/  # Courses, offerings, timetables
-    ├── attendance-service/  # Sessions, check-ins, geofence orchestration, reports
-    └── ai-vision-service/   # Face embedding + matching (internal-only)
-```
+## Face registration
+The mobile app sends a face image only for embedding extraction. The backend stores the 512-D embedding. Raw images are not stored. `reference_photo_url` remains a deliberate fake placeholder for now and is not used to retrieve an image.
 
----
+## Geofencing
+`venues.boundary_data` supports:
+- circle: `{ "center": {"lat": ..., "lng": ...}, "radius_m": 30 }`
+- square: stored with the existing DB `polygon` enum and four vertices/points in JSON, e.g. `{ "points": [[lat,lng], ...] }`
 
-## 🏗️ Architecture & Kubernetes Deployment
+The attendance service performs a point-in-polygon check for square/polygon boundaries and Haversine distance for circles.
 
-The project is deployed to a 2-node **K3s Kubernetes Cluster** hosted on Azure VMs with **NGINX Ingress Controller**:
+## Security included
+JWT validation, RBAC, resource-level ownership checks, internal service authentication, request-size validation, face-image/base64 validation, SQLAlchemy parameterized queries, audit logging hooks, restrictive CORS, environment-only secrets, HTTPS-ready deployment, and Kong rate limiting. A per-instance request guard is also present as a fallback.
 
-- **Namespace**: `smart-attendance`
-- **Ingress Controller**: Path-based routing via NGINX Ingress
-  - `/scheduling/*` ➔ `scheduling-service:8000`
-  - `/attendance/*` ➔ `attendance-service:8000`
-  - `/vision/*` ➔ `ai-vision-service:8000`
-- **Deployments & Scaling**: Each service runs with 2 replicas, resource CPU/Memory requests & limits, and Kubernetes readiness/liveness health probes (`/docs`).
+## Local test
+1. Copy env examples to each service `.env` and set real Supabase database/JWT settings plus one strong `INTERNAL_API_KEY`.
+2. Run `docker compose up --build`.
+3. Gateway: `http://localhost:8000`
+4. Scheduling docs: `http://localhost:8000/scheduling/docs`
+5. Attendance docs: `http://localhost:8000/attendance/docs`
+6. RabbitMQ UI: `http://localhost:15672` (`guest` / `guest` for local development)
+7. Run unit tests: `pytest services/attendance-service/tests -q`
+8. Full Python syntax check: `python -m compileall libs/shared-core/shared_core services/*/app`
 
----
+## Important operational note
+Kong is the local API-gateway option. Do not publish port 8003 for AI Vision. In Kubernetes keep AI Vision ClusterIP/internal-only; the provided NGINX ingress exposes only scheduling and attendance and forces HTTPS. Copy `k8s/secrets.example.yaml` to a real Secret with actual values before deployment.
 
-## 🛠️ Local Development (Docker Compose)
-
-Requires Docker and Docker Compose.
-
-```bash
-cp .env.example services/scheduling-service/.env
-cp .env.example services/attendance-service/.env
-cp .env.example services/ai-vision-service/.env
-
-make up
-```
-
-This starts all three services with live-reload:
-- `scheduling-service` ➔ http://localhost:8001
-- `attendance-service` ➔ http://localhost:8002
-- `ai-vision-service` ➔ http://localhost:8003
-
-### Interactive API docs (Swagger)
-
-Open any service root (e.g. http://localhost:8001/) for an index linking all three Swagger UIs, or go directly to:
-
-| Service | Swagger UI | ReDoc |
-|---------|------------|-------|
-| Scheduling | http://localhost:8001/docs | http://localhost:8001/redoc |
-| Attendance | http://localhost:8002/docs | http://localhost:8002/redoc |
-| AI Vision | http://localhost:8003/docs | http://localhost:8003/redoc |
-
-**Testing authenticated routes:** click **Authorize** → paste a Supabase `access_token` into **BearerAuth**.  
-**AI Vision:** authorize with **InternalApiKey** = `INTERNAL_API_KEY` from `.env`.
-
-Run tests: `make test`. Apply migrations: `make migrate`. Tear down: `make down`.
-
----
-
-## 🚀 Continuous Deployment (GitHub Actions to K3s)
-
-Every push to `main` triggers:
-1. Automated unit & integration tests (`pytest`).
-2. Docker multi-stage image build and push to **Docker Hub**.
-3. Automated deployment to the **Azure K3s Kubernetes Cluster** via `.github/workflows/deploy.yml` applying the `k8s/` manifests and executing zero-downtime `rollout restart`.
-
----
-
-## 🗝️ Required GitHub Repository Secrets
-
-Configure the following secrets in GitHub Repository Settings:
-- `DOCKERHUB_USERNAME`: Your Docker Hub username
-- `DOCKERHUB_TOKEN`: Your Docker Hub Access Token
-- `KUBECONFIG`: Content of your K3s cluster kubeconfig (`/etc/rancher/k3s/k3s.yaml` with Master VM Public IP)
+## End-to-end flow
+Student JWT -> attendance tick -> server-side geofence -> AttendanceRecord -> random window -> RabbitMQ -> AI Vision face verification -> RabbitMQ result -> Attendance finalizes the verification attempt and record.

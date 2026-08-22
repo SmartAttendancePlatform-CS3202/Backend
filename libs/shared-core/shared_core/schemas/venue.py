@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from pydantic import BaseModel, ConfigDict
 from shared_core.models.enums import GeofenceShape, VerificationMethod
 
@@ -8,7 +8,7 @@ class VenueBase(BaseModel):
     name: str
     building: Optional[str] = None
     floor: Optional[str] = None
-    shape_type: GeofenceShape = GeofenceShape.circle
+    shape_type: Literal["circle", "square", "polygon"] = "circle"
     boundary_data: Dict[str, Any]
     wifi_ssid: Optional[str] = None
     wifi_bssid: Optional[str] = None
@@ -23,7 +23,7 @@ class VenueUpdate(BaseModel):
     name: Optional[str] = None
     building: Optional[str] = None
     floor: Optional[str] = None
-    shape_type: Optional[GeofenceShape] = None
+    shape_type: Optional[Literal["circle", "square", "polygon"]] = None
     boundary_data: Optional[Dict[str, Any]] = None
     wifi_ssid: Optional[str] = None
     wifi_bssid: Optional[str] = None

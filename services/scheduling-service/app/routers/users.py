@@ -9,6 +9,7 @@ from shared_core.auth.rbac import require_role
 from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate
 from shared_core.models.identity import User
 from app.services import user_service
+from shared_core.audit import audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -22,6 +23,29 @@ def list_users(
     db: Session = Depends(get_db)
 ):
     return user_service.get_all_users(db, role=role, status=status, skip=skip, limit=limit)
+
+
+@router.get("/pending", response_model=List[UserOut])
+def pending_users(skip: int = 0, limit: int = 100, current_user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    return user_service.get_all_users(db, status="pending_approval", skip=skip, limit=limit)
+
+@router.post("/{id}/approve", response_model=UserOut)
+def approve_user(id: UUID, current_user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    user = user_service.get_user(db, id)
+    if not user: raise HTTPException(404, "User not found")
+    user = user_service.update_user_status(db, id, "active")
+    audit(db, current_user.id, "user.approve", "user", user.id, new_data={"status": "active"})
+    db.commit()
+    return user
+
+@router.post("/{id}/reject", response_model=UserOut)
+def reject_user(id: UUID, current_user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    user = user_service.get_user(db, id)
+    if not user: raise HTTPException(404, "User not found")
+    user = user_service.update_user_status(db, id, "inactive")
+    audit(db, current_user.id, "user.reject", "user", user.id, new_data={"status": "inactive"})
+    db.commit()
+    return user
 
 @router.get("/lecturers", response_model=List[LecturerOut])
 def list_lecturers(
@@ -91,7 +115,10 @@ def update_user_role(
     current_user: User = Depends(require_role(["admin"])),
     db: Session = Depends(get_db)
 ):
+    user = user_service.get_user(db, id)
+    if not user: raise HTTPException(status_code=404, detail="User not found")
+    old = {"role": getattr(user.role,"value",user.role), "status": getattr(user.status,"value",user.status)}
     user = user_service.update_user_role(db, id, role_data.model_dump(exclude_unset=True))
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    audit(db, current_user.id, "user.role_or_status.update", "user", user.id, old_data=old, new_data={"role": getattr(user.role,"value",user.role), "status": getattr(user.status,"value",user.status)})
+    db.commit()
     return user

@@ -6,12 +6,12 @@ from shared_core.models.enums import UserRole, UserStatus
 
 class UserOut(BaseModel):
     id: UUID
-    email: str
+    username: str
     role: UserRole
     status: UserStatus
+    is_active: bool
     created_at: datetime
     updated_at: datetime
-    
     model_config = ConfigDict(from_attributes=True)
 
 class UserRoleUpdate(BaseModel):
@@ -38,10 +38,8 @@ class StudentUpdate(BaseModel):
     photo_url: Optional[str] = None
 
 class LecturerOut(UserOut):
-    employee_id: str
-    full_name: str
-    name_with_initials: str
-    display_name: str
+    lecturer_code: Optional[str] = None
     department_id: Optional[UUID] = None
     contact_number: Optional[str] = None
+    email: Optional[str] = None
     photo_url: Optional[str] = None

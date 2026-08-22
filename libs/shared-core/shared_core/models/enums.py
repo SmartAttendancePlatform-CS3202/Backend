@@ -28,10 +28,9 @@ class VerificationMethod(str, enum.Enum):
 
 class GeofenceShape(str, enum.Enum):
     circle = "circle"
-    polygon = "polygon"
+    polygon = "polygon"  # Existing DB enum; polygon with 4 vertices is treated as a square.
 
 class WindowType(str, enum.Enum):
-    first_check_in = "first_check_in"
     check_in = "check_in"
     random_check = "random_check"
 

@@ -3,71 +3,74 @@ services:
     build:
       context: .
       dockerfile: services/scheduling-service/Dockerfile
-    ports:
-      - "8001:8000"
-    env_file:
-      - services/scheduling-service/.env
+    env_file: [services/scheduling-service/.env]
+    environment:
+      SERVICE_NAME: scheduling-service
     volumes:
       - ./services/scheduling-service/app:/app/app
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
 
   attendance-service:
     build:
       context: .
       dockerfile: services/attendance-service/Dockerfile
-    ports:
-      - "8002:8000"
-    env_file:
-      - services/attendance-service/.env
+    env_file: [services/attendance-service/.env]
     environment:
-      - SCHEDULING_SERVICE_URL=http://scheduling-service:8000
-      - AI_VISION_SERVICE_URL=http://ai-vision-service:8000
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      SCHEDULING_SERVICE_URL: http://scheduling-service:8000
+      AI_VISION_SERVICE_URL: http://ai-vision-service:8000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     volumes:
       - ./services/attendance-service/app:/app/app
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      scheduling-service:
-        condition: service_started
-      ai-vision-service:
-        condition: service_started
-      rabbitmq:
-        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
+    depends_on: [scheduling-service, ai-vision-service, rabbitmq]
 
   ai-vision-service:
     build:
       context: .
       dockerfile: services/ai-vision-service/Dockerfile
-    ports:
-      - "8003:8000"
-    env_file:
-      - services/ai-vision-service/.env
+    env_file: [services/ai-vision-service/.env]
     environment:
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-      - TF_CPP_MIN_LOG_LEVEL=2
-      - TF_ENABLE_ONEDNN_OPTS=0
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      TF_CPP_MIN_LOG_LEVEL: 2
+      TF_ENABLE_ONEDNN_OPTS: 0
     volumes:
       - ./services/ai-vision-service/app:/app/app
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
+    depends_on: [rabbitmq]
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: rabbitmq
-    hostname: rabbitmq
-    ports:
-      - "5600:5672"    # Main port for AMQP connections (host mapped to 5600 to avoid Windows reserved port conflicts)
-      - "15672:15672"  # Port for the RabbitMQ Web UI Dashboard
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     healthcheck:
-      test: rabbitmq-diagnostics -q ping
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  kong:
+    image: kong:3.9
+    depends_on: [scheduling-service, attendance-service]
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    volumes:
+      - ./kong/kong.yml:/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+      - "8443:8443"

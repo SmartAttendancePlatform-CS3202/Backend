@@ -3,7 +3,7 @@ from sqlalchemy import text
 import os
 
 # Use DIRECT_URL since it's a migration/DDL change
-DATABASE_URL = os.environ.get("DIRECT_URL", "postgresql://postgres.ywxuyhdvcvfqayckertu:CSE23batch2026@aws-1-ap-south-1.pooler.supabase.com:5432/postgres")
+DATABASE_URL = os.environ.get("DIRECT_URL") or os.environ.get("DATABASE_URL")
 
 engine = sqlalchemy.create_engine(DATABASE_URL)
 with engine.connect() as conn:
