@@ -26,8 +26,13 @@ services:
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     expose: ["8000"]
-    depends_on: [scheduling-service, ai-vision-service, rabbitmq]
-
+    depends_on:
+      scheduling-service:
+        condition: service_started
+      ai-vision-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
   ai-vision-service:
     build:
       context: .
@@ -42,8 +47,9 @@ services:
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     expose: ["8000"]
-    depends_on: [rabbitmq]
-
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
   rabbitmq:
     image: rabbitmq:3-management-alpine
     environment:

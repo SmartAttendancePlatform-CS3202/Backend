@@ -13,7 +13,7 @@ from shared_core.middleware import RequestGuardMiddleware, StructlogMiddleware
 from shared_core.config import get_settings
 from app.routers import courses,timetables,users,departments,academic_years,offerings,venues,enrollments
 setup_logging("scheduling-service")
-app=FastAPI(title="Scheduling Service",version="2.0.0",description=service_description("Scheduling, courses, offerings, venues, enrollment and timetable API."),swagger_ui_parameters=SWAGGER_UI_PARAMETERS)
+app=FastAPI(title="Scheduling Service",version="2.0.0",description=service_description("Scheduling, courses, offerings, venues, enrollment and timetable API."),swagger_ui_parameters=SWAGGER_UI_PARAMETERS,root_path="/scheduling")
 app.add_middleware(RequestGuardMiddleware); app.add_middleware(StructlogMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=get_settings().allowed_origin_list,allow_credentials=True,allow_methods=["GET","POST","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Internal-Key","X-Request-ID"])
 Instrumentator().instrument(app).expose(app)

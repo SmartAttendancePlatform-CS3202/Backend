@@ -27,7 +27,7 @@ async def lifespan(app:FastAPI):
     await stop_result_consumer()
     await close_rabbitmq()
 
-app=FastAPI(title="Attendance Service",version="2.0.0",description=service_description("Attendance, geofenced check-in, AI verification orchestration and reporting."),swagger_ui_parameters=SWAGGER_UI_PARAMETERS,lifespan=lifespan)
+app=FastAPI(title="Attendance Service",version="2.0.0",description=service_description("Attendance, geofenced check-in, AI verification orchestration and reporting."),swagger_ui_parameters=SWAGGER_UI_PARAMETERS,lifespan=lifespan,root_path="/attendance")
 app.add_middleware(RequestGuardMiddleware)
 app.add_middleware(StructlogMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=get_settings().allowed_origin_list,allow_credentials=True,allow_methods=["GET","POST","PATCH","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Request-ID"])
