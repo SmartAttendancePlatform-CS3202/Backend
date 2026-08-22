@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import structlog
 import time
 import uuid
 from collections import defaultdict, deque
@@ -38,3 +39,40 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
+
+
+class StructlogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Bind request-specific information to the logger context
+        log = structlog.get_logger()
+        
+        # Capture method and path
+        log = log.bind(
+            method=request.method,
+            path=request.url.path,
+        )
+
+        start_time = time.time()
+        
+        try:
+            # Pass the request to the next middleware / endpoint
+            response = await call_next(request)
+            
+            # Log the successful completion
+            process_time = time.time() - start_time
+            log.info(
+                "request_completed", 
+                status_code=response.status_code,
+                process_time=f"{process_time:.4f}s"
+            )
+            return response
+            
+        except Exception as e:
+            # Log any unhandled exceptions
+            process_time = time.time() - start_time
+            log.error(
+                "request_failed", 
+                error=str(e),
+                process_time=f"{process_time:.4f}s"
+            )
+            raise e
