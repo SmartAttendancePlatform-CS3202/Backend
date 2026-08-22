@@ -3,6 +3,7 @@ import os
 from fastapi import Depends, FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.orm import Session
 from sqlalchemy import text

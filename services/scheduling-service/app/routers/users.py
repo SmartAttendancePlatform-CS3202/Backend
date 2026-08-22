@@ -97,6 +97,16 @@ def get_my_lecturer_profile(
         raise HTTPException(status_code=404, detail="Lecturer profile not found")
     return lecturer
 
+@router.get("/me", response_model=UserOut)
+def get_my_user_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = user_service.get_user(db, current_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
 @router.get("/{id}", response_model=UserOut)
 def get_user_by_id(
     id: UUID,
