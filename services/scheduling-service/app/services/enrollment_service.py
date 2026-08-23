@@ -36,3 +36,6 @@ def delete_enrollment(db: Session, enrollment_id: UUID, user_id: UUID):
 
 def get_students_for_offering(db: Session, offering_id: UUID, skip: int = 0, limit: int = 100):
     return enrollment_repository.get_students_for_offering(db, offering_id, skip=skip, limit=limit)
+
+
+def get_for_offering(db, offering_id): return enrollment_repository.get_for_offering(db, offering_id)

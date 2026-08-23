@@ -13,6 +13,27 @@ from shared_core.audit import audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+
+@router.get("/me")
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    payload = {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.username,
+        "role": getattr(current_user.role, "value", current_user.role),
+        "status": getattr(current_user.status, "value", current_user.status),
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "updated_at": current_user.updated_at,
+    }
+    if getattr(current_user.role, "value", current_user.role) == "lecturer" and current_user.lecturer_profile:
+        p = current_user.lecturer_profile
+        payload.update({"lecturer_code": p.lecturer_code, "display_name": p.display_name if hasattr(p, "display_name") else p.email, "email": p.email or current_user.username, "department_id": p.department_id})
+    elif getattr(current_user.role, "value", current_user.role) == "student" and current_user.student_profile:
+        p = current_user.student_profile
+        payload.update({"student_index_no": p.student_index_no, "full_name": p.full_name, "name_with_initials": p.name_with_initials, "display_name": p.display_name, "department_id": p.department_id, "academic_year_id": p.academic_year_id, "photo_url": p.photo_url})
+    return payload
+
 @router.get("", response_model=List[UserOut])
 def list_users(
     role: Optional[str] = None,
@@ -96,16 +117,6 @@ def get_my_lecturer_profile(
     if not lecturer:
         raise HTTPException(status_code=404, detail="Lecturer profile not found")
     return lecturer
-
-@router.get("/me", response_model=UserOut)
-def get_my_user_profile(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    user = user_service.get_user(db, current_user.id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
 
 @router.get("/{id}", response_model=UserOut)
 def get_user_by_id(

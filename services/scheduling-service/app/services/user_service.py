@@ -25,7 +25,25 @@ def update_user_role(db: Session, user_id: UUID, role_data: dict):
     user = user_repository.get_user(db, user_id=user_id)
     if not user:
         return None
-    return user_repository.update_user(db, user=user, update_data=role_data)
+    profile_data = {}
+    if "display_name" in role_data:
+        profile_data["display_name"] = role_data.pop("display_name")
+    if "department_id" in role_data:
+        profile_data["department_id"] = role_data.pop("department_id")
+    if "identifier" in role_data:
+        profile_data["identifier"] = role_data.pop("identifier")
+    updated = user_repository.update_user(db, user=user, update_data=role_data)
+    if profile_data:
+        role = getattr(updated.role, "value", updated.role)
+        if role == "student" and updated.student_profile:
+            if "display_name" in profile_data: updated.student_profile.display_name = profile_data["display_name"]
+            if "department_id" in profile_data: updated.student_profile.department_id = profile_data["department_id"]
+            if "identifier" in profile_data: updated.student_profile.student_index_no = profile_data["identifier"]
+        elif role == "lecturer" and updated.lecturer_profile:
+            if "department_id" in profile_data: updated.lecturer_profile.department_id = profile_data["department_id"]
+            if "identifier" in profile_data: updated.lecturer_profile.lecturer_code = profile_data["identifier"]
+        db.commit(); db.refresh(updated)
+    return updated
 
 def update_student(db: Session, student_id: UUID, update_data: dict):
     student = user_repository.get_student(db, student_id=student_id)

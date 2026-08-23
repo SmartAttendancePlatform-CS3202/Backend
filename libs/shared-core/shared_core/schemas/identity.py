@@ -17,6 +17,9 @@ class UserOut(BaseModel):
 class UserRoleUpdate(BaseModel):
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
+    display_name: Optional[str] = None
+    department_id: Optional[UUID] = None
+    identifier: Optional[str] = None
 
 class StudentOut(UserOut):
     student_index_no: str
@@ -31,6 +34,8 @@ class StudentOut(UserOut):
     contact_number: Optional[str] = None
     address: Optional[str] = None
     photo_url: Optional[str] = None
+    department_name: Optional[str] = None
+    academic_year_name: Optional[str] = None
 
 class StudentUpdate(BaseModel):
     contact_number: Optional[str] = None

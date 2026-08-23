@@ -63,6 +63,19 @@ class CourseOffering(Base):
     course_materials: Mapped[list["CourseMaterial"]] = relationship(back_populates="course_offering")
     notices: Mapped[list["Notice"]] = relationship(back_populates="course_offering")
 
+    @property
+    def course_code(self): return self.course.course_code if self.course else None
+    @property
+    def course_name(self): return self.course.name if self.course else None
+    @property
+    def academic_year_name(self): return self.academic_year.name if self.academic_year else None
+    @property
+    def venue_name(self): return self.venue.name if self.venue else None
+    @property
+    def lecturer_name(self): return self.lecturer.user.username if self.lecturer and self.lecturer.user else None
+    @property
+    def enrolled_count(self): return sum(1 for e in self.enrollments if e.is_active)
+
 
 class Enrollment(Base):
     __tablename__ = "enrollments"

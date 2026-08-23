@@ -12,8 +12,8 @@ from app.services import attendance_service
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 @router.get("", response_model=List[LectureSessionOut])
-def list_sessions(offering_id: Optional[UUID] = Query(None), skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return attendance_service.get_sessions(db, offering_id, skip, limit)
+def list_sessions(offering_id: Optional[UUID] = Query(None), status: Optional[str] = Query(None), skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return attendance_service.get_sessions(db, offering_id, skip, limit, status)
 
 @router.post("", response_model=LectureSessionOut, status_code=201)
 def start_session(data: SessionCreate, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):

@@ -136,8 +136,14 @@ async def record_random_check(db: Session, student_id: UUID, payload):
 
 
 def get_student_attendance(db, student_id): return attendance_repository.get_attendance_records(db, student_id=student_id)
+
+def get_records(db, session_id=None, student_id=None): return attendance_repository.get_attendance_records(db, session_id=session_id, student_id=student_id)
 def get_attendance_attempts(db, record_id): return attendance_repository.get_attempts_for_record(db, record_id)
 def get_recent_attempts(db, offering_id=None): return attendance_repository.get_recent_attempts(db, offering_id)
+
+def get_sessions(db, offering_id=None, skip=0, limit=100, status=None): return attendance_repository.get_sessions(db, offering_id, skip, limit, status)
+
+def get_session(db, session_id): return attendance_repository.get_session(db, session_id)
 
 
 def override_record(db: Session, record_id: UUID, user_id: UUID, override_data: dict):

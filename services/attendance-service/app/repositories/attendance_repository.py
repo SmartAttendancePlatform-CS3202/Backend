@@ -22,9 +22,11 @@ def get_session(db: Session, session_id: UUID):
     return db.query(LectureSession).filter(LectureSession.id == session_id).first()
 
 
-def get_sessions(db: Session, offering_id=None, skip=0, limit=100):
+def get_sessions(db: Session, offering_id=None, skip=0, limit=100, status=None):
     q = db.query(LectureSession).order_by(LectureSession.scheduled_at.desc())
     if offering_id: q = q.filter(LectureSession.course_offering_id == offering_id)
+    if status:
+        q = q.filter(cast(LectureSession.status, String) == status)
     return q.offset(skip).limit(min(limit, 200)).all()
 
 

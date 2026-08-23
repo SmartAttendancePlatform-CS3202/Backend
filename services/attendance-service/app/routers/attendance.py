@@ -11,6 +11,22 @@ from app.services import attendance_service
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
+@router.get("/records", response_model=List[AttendanceRecordOut])
+def records(session_id: Optional[UUID] = Query(None), student_id: Optional[UUID] = Query(None), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    role = getattr(current_user.role, "value", current_user.role)
+    if role == "student":
+        if student_id and student_id != current_user.id:
+            raise HTTPException(403, "Forbidden")
+        return attendance_service.get_records(db, session_id=session_id, student_id=current_user.id)
+    if role == "lecturer" and session_id:
+        session = attendance_service.get_session(db, session_id)
+        if not session or session.course_offering.lecturer_id != current_user.id:
+            raise HTTPException(403, "Forbidden")
+    if role == "lecturer" and student_id:
+        # Only records from the lecturer's offerings are returned.
+        return [r for r in attendance_service.get_records(db, student_id=student_id) if r.lecture_session.course_offering.lecturer_id == current_user.id]
+    return attendance_service.get_records(db, session_id=session_id, student_id=student_id)
+
 @router.get("/me", response_model=List[AttendanceRecordOut])
 def me(current_user: User = Depends(require_role("student")), db: Session = Depends(get_db)):
     return attendance_service.get_student_attendance(db, current_user.id)
