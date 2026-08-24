@@ -11,7 +11,17 @@ from shared_core.openapi import API_INDEX_HTML, SWAGGER_UI_PARAMETERS, service_d
 from shared_core.logging import setup_logging
 from shared_core.middleware import RequestGuardMiddleware, StructlogMiddleware
 from shared_core.config import get_settings
-from app.routers import courses,timetables,users,departments,academic_years,offerings,venues,enrollments,admin
+from .routers import (
+    academic_years,
+    admin,
+    courses,
+    departments,
+    enrollments,
+    offerings,
+    timetables,
+    users,
+    venues,
+)
 setup_logging("scheduling-service")
 app=FastAPI(title="Scheduling Service",version="2.0.0",description=service_description("Scheduling, courses, offerings, venues, enrollment and timetable API."),swagger_ui_parameters=SWAGGER_UI_PARAMETERS,root_path="/scheduling")
 app.add_middleware(RequestGuardMiddleware); app.add_middleware(StructlogMiddleware)

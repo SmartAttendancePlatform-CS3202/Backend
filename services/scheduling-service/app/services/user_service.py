@@ -1,7 +1,7 @@
 from uuid import UUID
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.repositories import user_repository
+import app.repositories.user_repository as user_repository
 
 def get_user(db: Session, user_id: UUID):
     return user_repository.get_user(db, user_id=user_id)
@@ -12,7 +12,7 @@ def get_student(db: Session, student_id: UUID):
 def get_lecturer(db: Session, lecturer_id: UUID):
     return user_repository.get_lecturer(db, lecturer_id=lecturer_id)
 
-def get_all_users(db: Session, role: str = None, status: str = None, skip: int = 0, limit: int = 100):
+def get_all_users(db: Session, role: Optional[str] = None, status: Optional[str] = None, skip: int = 0, limit: int = 100):
     return user_repository.get_all_users(db, role=role, status=status, skip=skip, limit=limit)
 
 def get_all_lecturers(db: Session, skip: int = 0, limit: int = 100):

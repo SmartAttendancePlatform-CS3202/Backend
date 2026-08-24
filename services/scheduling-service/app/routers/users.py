@@ -8,8 +8,12 @@ from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate
 from shared_core.models.identity import User
-from app.services import user_service
 from shared_core.audit import audit
+
+try:
+    import app.services.user_service as user_service
+except ImportError:  # pragma: no cover
+    from app.services import user_service  # type: ignore[reportAttributeAccessIssue]
 
 router = APIRouter(prefix="/users", tags=["users"])
 
