@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-import base64
-import binascii
 from shared_core.auth.rbac import verify_internal_key
 from shared_core.db.session import get_db
 from sqlalchemy.orm import Session

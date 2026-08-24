@@ -28,7 +28,6 @@ def delete_enrollment(db: Session, enrollment_id: UUID, user_id: UUID):
     if not enrollment: return False
     if getattr(enrollment.course_offering.lecturer_id, "hex", None) and enrollment.course_offering.lecturer_id != user_id:
         # Admin ownership is handled at router level; lecturer must own offering.
-        from shared_core.models.identity import User
         actor = user_repository.get_user(db, user_id)
         if not actor or actor.role.value != "admin": raise HTTPException(403, "Forbidden")
     enrollment_repository.delete_enrollment(db, enrollment)

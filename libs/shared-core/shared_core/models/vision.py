@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import Any
-from sqlalchemy import String, Boolean, DateTime, func, ForeignKey, Text, text, Numeric, Index
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .identity import Student, User
+from sqlalchemy import Boolean, DateTime, func, ForeignKey, Text, text, Numeric, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 

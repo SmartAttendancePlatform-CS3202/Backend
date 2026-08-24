@@ -1,12 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared_core.openapi import API_INDEX_HTML, SWAGGER_UI_PARAMETERS, service_description
 from shared_core.logging import setup_logging
 from shared_core.middleware import RequestGuardMiddleware, StructlogMiddleware
-from shared_core.config import get_settings
 from app.routers import verify
 from app.rabbitmq.consumer import init_rabbitmq_consumer, close_rabbitmq_consumer
 setup_logging("ai-vision-service")
