@@ -7,7 +7,7 @@ from shared_core.models.enums import UserRole, UserStatus
 def get_user(db: Session, user_id: UUID) -> Optional[User]:
     return db.query(User).filter(User.id == user_id).first()
 
-def list_users(
+def get_all_users(
     db: Session,
     role: Optional[UserRole] = None,
     status: Optional[UserStatus] = None,
@@ -25,3 +25,29 @@ def list_users(
     if status is not None:
         query = query.filter(User.status == status)
     return query.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_student(db: Session, student_id: UUID) -> Optional[Student]:
+    return db.query(Student).filter(Student.id == student_id).first()
+
+def get_lecturer(db: Session, lecturer_id: UUID) -> Optional[Lecturer]:
+    return db.query(Lecturer).filter(Lecturer.id == lecturer_id).first()
+
+def get_all_lecturers(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Lecturer).offset(skip).limit(limit).all()
+
+def get_all_students(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Student).offset(skip).limit(limit).all()
+
+def update_user(db: Session, user: User, update_data: dict) -> User:
+    for key, value in update_data.items():
+        setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def update_student(db: Session, student: Student, update_data: dict) -> Student:
+    for key, value in update_data.items():
+        setattr(student, key, value)
+    db.commit()
+    db.refresh(student)
+    return student
