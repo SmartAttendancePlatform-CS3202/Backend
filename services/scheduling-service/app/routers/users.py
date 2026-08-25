@@ -8,6 +8,7 @@ from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut
 from shared_core.models.identity import User
+from shared_core.models.enums import UserRole, UserStatus
 from shared_core.audit import audit
 
 try:
@@ -86,7 +87,7 @@ def list_lecturers(
     """Admin user directory: flattened list of accounts + their student/lecturer
     profile fields, with optional role/status filters. Backs the web dashboard's
     Admin > Users page."""
-    return user_service.list_users(db, role=role, status=status, skip=skip, limit=limit)
+    return user_service.get_all_lecturers(db, skip=skip, limit=limit)
 
 @router.get("/students/me", response_model=StudentOut)
 def get_my_student_profile(
