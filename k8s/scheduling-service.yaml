@@ -24,6 +24,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: platform-config
+            - secretRef:
+                name: smart-attendance-secrets
           resources:
             requests:
               cpu: 100m

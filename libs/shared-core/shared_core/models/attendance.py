@@ -56,6 +56,31 @@ class LectureSession(Base):
     verification_windows: Mapped[list["VerificationWindow"]] = relationship(back_populates="lecture_session")
     attendance_records: Mapped[list["AttendanceRecord"]] = relationship(back_populates="lecture_session")
 
+    @property
+    def total_enrolled(self):
+        return sum(1 for e in self.course_offering.enrollments if e.is_active) if self.course_offering else 0
+
+    @property
+    def present_count(self):
+        return sum(1 for r in self.attendance_records if getattr(r.status, "value", r.status) == "present")
+
+    @property
+    def late_count(self):
+        return sum(1 for r in self.attendance_records if getattr(r.status, "value", r.status) == "late")
+
+    @property
+    def flagged_count(self):
+        return sum(1 for r in self.attendance_records if getattr(r.status, "value", r.status) == "flagged_proxy")
+
+    @property
+    def absent_count(self):
+        total = self.total_enrolled
+        return max(0, total - self.present_count - self.late_count - self.flagged_count)
+
+    @property
+    def verified_count(self):
+        return sum(1 for r in self.attendance_records if getattr(r, "random_check_completed_at", None))
+
 
 class VerificationWindow(Base):
     __tablename__ = "verification_windows"
@@ -105,6 +130,17 @@ class AttendanceRecord(Base):
     student: Mapped["Student"] = relationship(back_populates="attendance_records")
     overrider: Mapped["User"] = relationship(foreign_keys=[override_by])
 
+    @property
+    def student_name(self): return self.student.display_name if self.student else None
+    @property
+    def student_index(self): return self.student.student_index_no if self.student else None
+    @property
+    def student_photo(self): return self.student.photo_url if self.student else None
+    @property
+    def override_by_name(self):
+        if not self.overrider: return None
+        return self.overrider.username
+
 
 class AttendanceVerificationAttempt(Base):
     __tablename__ = "attendance_verification_attempts"
@@ -134,3 +170,8 @@ class AttendanceVerificationAttempt(Base):
     # Relationships
     verification_window: Mapped["VerificationWindow"] = relationship(back_populates="attempts")
     student: Mapped["Student"] = relationship(back_populates="verification_attempts")
+
+    @property
+    def student_name(self): return self.student.display_name if self.student else None
+    @property
+    def student_index(self): return self.student.student_index_no if self.student else None

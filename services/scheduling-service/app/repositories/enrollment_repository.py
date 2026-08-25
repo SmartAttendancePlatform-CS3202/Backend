@@ -33,3 +33,7 @@ def get_students_for_offering(db: Session, offering_id: UUID, skip: int = 0, lim
         .limit(limit)
         .all()
     )
+
+
+def get_for_offering(db, offering_id):
+    return db.query(Enrollment).filter(Enrollment.course_offering_id == offering_id).order_by(Enrollment.enrolled_at.desc()).all()

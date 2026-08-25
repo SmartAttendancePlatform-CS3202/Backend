@@ -4,32 +4,29 @@ metadata:
   name: smart-attendance-ingress
   namespace: smart-attendance
   annotations:
-    ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - attendance.example.com
+      secretName: smart-attendance-tls
   rules:
-    - http:
+    - host: attendance.example.com
+      http:
         paths:
-          - path: /scheduling(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /scheduling
+            pathType: Prefix
             backend:
               service:
                 name: scheduling-service
                 port:
                   number: 8000
-          - path: /attendance(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /attendance
+            pathType: Prefix
             backend:
               service:
                 name: attendance-service
                 port:
                   number: 8000
-          - path: /vision(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: ai-vision-service
-                port:
-                  number: 8000
+          # ai-vision-service intentionally has no public ingress route.

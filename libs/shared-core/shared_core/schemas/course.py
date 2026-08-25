@@ -59,9 +59,14 @@ class CourseOfferingUpdate(BaseModel):
 
 class CourseOfferingOut(CourseOfferingBase):
     id: UUID
+    course_code: Optional[str] = None
+    course_name: Optional[str] = None
+    academic_year_name: Optional[str] = None
+    venue_name: Optional[str] = None
+    lecturer_name: Optional[str] = None
+    enrolled_count: Optional[int] = None
     created_by: UUID
     created_at: datetime
     updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
-
