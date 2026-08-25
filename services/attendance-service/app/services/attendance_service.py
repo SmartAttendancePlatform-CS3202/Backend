@@ -68,7 +68,8 @@ def get_active_windows(db: Session, lecture_session_id: UUID, student_id: UUID |
     }
 
 
-def record_check_in(db: Session, student_id: UUID, payload):
+
+async def record_check_in(db: Session, student_id: UUID, payload):
     session = _assert_student_enrolled(db, student_id, payload.lecture_session_id)
     window = attendance_repository.get_open_window(db, session.id, "check_in")
     if not window: raise HTTPException(400, "No active check-in window")
@@ -77,30 +78,36 @@ def record_check_in(db: Session, student_id: UUID, payload):
         raise HTTPException(409, "Attendance check-in already recorded")
     geo, _ = _venue_check(session, payload.latitude, payload.longitude)
     now = datetime.now(timezone.utc)
+    attempt_id = uuid4()
     if not geo["inside"]:
         attendance_repository.log_attempt(db, {
-            "verification_window_id": window.id, "student_id": student_id, "used_location_check": True,
+            "id": attempt_id, "verification_window_id": window.id, "student_id": student_id, "used_location_check": True,
             "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
             "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.failed,
             "failure_reason": "Outside geofence", "attempted_at": now,
         })
         raise HTTPException(400, "Location check failed: outside geofence")
-    late_threshold = int(session.course_offering.late_threshold_minutes or 10)
-    status = AttendanceStatus.late if now > session.scheduled_at + timedelta(minutes=late_threshold) else AttendanceStatus.present
-    record = attendance_repository.create_or_get_record(db, session.id, student_id)
-    record.first_check_in_at = now
-    record.status = status
-    db.add(record)
-    db.commit(); db.refresh(record)
-    return attendance_repository.log_attempt(db, {
-        "verification_window_id": window.id, "student_id": student_id, "used_location_check": True,
-        "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
-        "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.success,
-        "attempted_at": now,
-    })
+        
+    task = FaceVerificationTask(
+        event_id=uuid4(), attempt_id=attempt_id, student_id=student_id, verification_window_id=window.id,
+        face_image_base64=payload.face_image_base64, latitude=payload.latitude, longitude=payload.longitude,
+    )
+    try:
+        await publish_verification_task(task)
+    except Exception as exc:
+        attendance_repository.log_attempt(db, {
+            "id": attempt_id, "verification_window_id": window.id, "student_id": student_id,
+            "used_face_verification": True, "used_location_check": True, "location_method": "gps_geofence",
+            "latitude": payload.latitude, "longitude": payload.longitude,
+            "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.failed,
+            "failure_reason": f"Queue unavailable: {exc}", "attempted_at": now,
+        })
+        raise HTTPException(503, "Face verification queue unavailable") from exc
+    return {"status": "processing", "attempt_id": attempt_id}
 
 
-async def record_random_check(db: Session, student_id: UUID, payload):
+
+def record_random_check(db: Session, student_id: UUID, payload):
     session = _assert_student_enrolled(db, student_id, payload.lecture_session_id)
     active = attendance_repository.get_open_window(db, session.id, "random_check")
     if not active or active.id != payload.verification_window_id:
@@ -115,24 +122,23 @@ async def record_random_check(db: Session, student_id: UUID, payload):
             "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.failed,
             "failure_reason": "Outside geofence",
         })
-        return {"status": "rejected", "attempt_id": attempt.id, "reason": "outside_geofence"}
+        return {"status": "rejected", "attempt_id": attempt_id, "reason": "outside_geofence"}
 
-    task = FaceVerificationTask(
-        event_id=uuid4(), attempt_id=attempt_id, student_id=student_id, verification_window_id=active.id,
-        face_image_base64=payload.face_image_base64, latitude=payload.latitude, longitude=payload.longitude,
-    )
-    try:
-        await publish_verification_task(task)
-    except Exception as exc:
-        attendance_repository.log_attempt(db, {
-            "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-            "used_face_verification": True, "used_location_check": True, "location_method": "gps_geofence",
-            "latitude": payload.latitude, "longitude": payload.longitude,
-            "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.failed,
-            "failure_reason": f"Queue unavailable: {exc}",
-        })
-        raise HTTPException(503, "Face verification queue unavailable") from exc
-    return {"status": "processing", "attempt_id": attempt_id}
+    attempt = attendance_repository.log_attempt(db, {
+        "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
+        "used_face_verification": False, "used_location_check": True, "location_method": "gps_geofence",
+        "latitude": payload.latitude, "longitude": payload.longitude,
+        "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.success,
+        "attempted_at": datetime.now(timezone.utc),
+    })
+    
+    # Update random check completed at
+    record = attendance_repository.get_attendance_record(db, session.id, student_id)
+    if record:
+        record.random_check_completed_at = datetime.now(timezone.utc)
+        db.commit()
+        
+    return {"status": "success", "attempt_id": attempt_id}
 
 
 def get_student_attendance(db, student_id): return attendance_repository.get_attendance_records(db, student_id=student_id)

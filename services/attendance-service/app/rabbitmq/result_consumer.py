@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio, json, logging, os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 import aio_pika
 from sqlalchemy.orm import Session
@@ -42,11 +42,35 @@ def _finalize_result(db: Session, result: FaceVerificationResult) -> None:
         AttendanceRecord.lecture_session_id == window.lecture_session_id,
         AttendanceRecord.student_id == result.student_id,
     ).first()
-    if record and result.face_match:
-        record.random_check_completed_at = datetime.now(timezone.utc)
-    elif record and not result.face_match:
-        record.status = AttendanceStatus.flagged_proxy
-        record.flag_reason = "Random face verification failed"
+    
+    if not record:
+        record = AttendanceRecord(
+            id=__import__('uuid').uuid4(),
+            lecture_session_id=window.lecture_session_id,
+            student_id=result.student_id,
+        )
+        db.add(record)
+        
+    if getattr(window.window_type, "value", window.window_type) == "check_in":
+        if result.face_match:
+            now = datetime.now(timezone.utc)
+            record.first_check_in_at = now
+            session = window.lecture_session
+            late_threshold = int(session.course_offering.late_threshold_minutes or 10)
+            status = AttendanceStatus.late if now > session.scheduled_at + timedelta(minutes=late_threshold) else AttendanceStatus.present
+            record.status = status
+        else:
+            record.status = AttendanceStatus.absent
+            record.flag_reason = "Initial face verification failed"
+    else:
+        # If somehow it was a random check queue
+        if result.face_match:
+            record.random_check_completed_at = datetime.now(timezone.utc)
+        else:
+            record.status = AttendanceStatus.flagged_proxy
+            record.flag_reason = "Random face verification failed"
+            
+    db.commit()
     db.commit()
 
 
