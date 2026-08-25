@@ -1,16 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: smart-attendance-ingress
+  name: scheduling-ingress
   namespace: smart-attendance
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-scheduling-prefix@kubernetescrd
 spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - attendance.example.com
-      secretName: smart-attendance-tls
+  ingressClassName: traefik
   rules:
     - host: attendance.example.com
       http:
@@ -22,6 +18,19 @@ spec:
                 name: scheduling-service
                 port:
                   number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: attendance-ingress
+  namespace: smart-attendance
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-attendance-prefix@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
           - path: /attendance
             pathType: Prefix
             backend:
@@ -29,4 +38,59 @@ spec:
                 name: attendance-service
                 port:
                   number: 8000
-          # ai-vision-service intentionally has no public ingress route.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vision-ingress
+  namespace: smart-attendance
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-vision-prefix@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /vision
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-vision-service
+                port:
+                  number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kibana-ingress
+  namespace: logging
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /kibana
+            pathType: Prefix
+            backend:
+              service:
+                name: kibana
+                port:
+                  number: 5601

@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import datetime, date
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from shared_core.models.enums import UserRole, UserStatus
 
 class UserOut(BaseModel):
@@ -48,3 +48,23 @@ class LecturerOut(UserOut):
     contact_number: Optional[str] = None
     email: Optional[str] = None
     photo_url: Optional[str] = None
+
+
+class UserDirectoryOut(BaseModel):
+    """Flattened admin-directory view of a user: base account fields plus
+    whichever profile (student/lecturer) applies. Used by GET /users."""
+
+    id: UUID
+    email: Optional[str] = None
+    role: UserRole
+    status: UserStatus
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    display_name: Optional[str] = None
+    full_name: Optional[str] = None
+    identifier: Optional[str] = None  # student index no. or lecturer employee code
+    department_id: Optional[UUID] = None
+    department_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

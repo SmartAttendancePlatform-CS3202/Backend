@@ -6,7 +6,7 @@ from typing import List, Optional
 from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
-from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate
+from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut
 from shared_core.models.identity import User
 from shared_core.audit import audit
 
@@ -40,8 +40,8 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
 
 @router.get("", response_model=List[UserOut])
 def list_users(
-    role: Optional[str] = None,
-    status: Optional[str] = None,
+    role: Optional[UserRole] = None,
+    status: Optional[UserStatus] = None,
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(require_role(["admin"])),
@@ -83,17 +83,10 @@ def list_lecturers(
     current_user: User = Depends(require_role(["admin", "lecturer"])),
     db: Session = Depends(get_db)
 ):
-    return user_service.get_all_lecturers(db, skip=skip, limit=limit)
-
-@router.get("/students", response_model=List[StudentOut])
-def list_students(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(require_role(["admin", "lecturer"])),
-    db: Session = Depends(get_db)
-):
-    return user_service.get_all_students(db, skip=skip, limit=limit)
-
+    """Admin user directory: flattened list of accounts + their student/lecturer
+    profile fields, with optional role/status filters. Backs the web dashboard's
+    Admin > Users page."""
+    return user_service.list_users(db, role=role, status=status, skip=skip, limit=limit)
 
 @router.get("/students/me", response_model=StudentOut)
 def get_my_student_profile(
