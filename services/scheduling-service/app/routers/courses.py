@@ -8,7 +8,8 @@ from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.course import CourseOut, CourseCreate, CourseUpdate, CourseOfferingOut
 from shared_core.models.identity import User
-from app.services import course_service, offering_service
+import app.services.course_service as course_service
+import app.services.offering_service as offering_service
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 

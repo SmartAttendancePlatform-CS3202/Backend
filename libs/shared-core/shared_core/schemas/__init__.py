@@ -1,3 +1,4 @@
+# flake8: noqa
 from .course import *
 from .session import *
 from .identity import *

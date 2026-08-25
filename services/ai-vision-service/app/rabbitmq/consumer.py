@@ -1,97 +1,80 @@
-import os
+from __future__ import annotations
+import asyncio, logging, os, time
 import aio_pika
-import json
-import asyncio
-import base64
-from uuid import UUID
-import logging
-from sqlalchemy.orm import Session
-from shared_core.db.session import get_session_factory
-from shared_core.schemas.events import FaceVerificationTask
+from aio_pika import ExchangeType
+from shared_core.schemas.events import FaceVerificationTask, FaceVerificationResult
 from app.services import matching_service
-from shared_core.models.attendance import AttendanceVerificationAttempt
-from shared_core.models.enums import AttemptStatus
+from shared_core.db.session import get_session_factory
 
 logger = logging.getLogger(__name__)
-
 _connection = None
-_channel = None
 
-async def process_message(message: aio_pika.IncomingMessage):
-    async with message.process():
+async def _handle(message: aio_pika.IncomingMessage):
+    try:
+        retry_count = int((message.headers or {}).get("x-retry-count", 0))
+        task = FaceVerificationTask.model_validate_json(message.body)
+        started = time.perf_counter()
+        db = get_session_factory()()
         try:
-            body = message.body.decode()
-            data = json.loads(body)
-            task = FaceVerificationTask(**data)
-            
-            # Process face verification
-            # Since this is an async context, we should run synchronous DB/ML operations in a threadpool,
-            # but for simplicity, we'll just run it directly. Fastapi/SQLAlchemy handles some synchronous calls well enough for a PoC.
-            db = get_session_factory()()
-            try:
-                result = matching_service.verify_face(db, task.student_id, task.face_image_base64)
-                
-                # Create and commit the AttendanceVerificationAttempt directly
-                attempt = AttendanceVerificationAttempt(
-                    verification_window_id=task.verification_window_id,
-                    student_id=UUID(task.student_id),
-                    used_face_verification=True,
-                    used_location_check=True,
-                    latitude=task.latitude,
-                    longitude=task.longitude,
-                    face_match_confidence=result["confidence"],
-                    status=AttemptStatus.success if result["is_match"] else AttemptStatus.failed,
-                    failure_reason="Face mismatch" if not result["is_match"] else None
-                )
-                db.add(attempt)
-                db.commit()
-                
-                # Also we should update the AttendanceRecord to set random_check_completed_at if success
-                if result["is_match"]:
-                    from shared_core.models.attendance import AttendanceRecord, VerificationWindow
-                    from datetime import datetime
-                    
-                    window = db.query(VerificationWindow).filter(VerificationWindow.id == task.verification_window_id).first()
-                    if window:
-                        record = db.query(AttendanceRecord).filter(
-                            AttendanceRecord.lecture_session_id == window.lecture_session_id,
-                            AttendanceRecord.student_id == UUID(task.student_id)
-                        ).first()
-                        if record:
-                            record.random_check_completed_at = datetime.utcnow()
-                            db.commit()
-                            
-            finally:
-                db.close()
-                
-        except Exception as e:
-            logger.error(f"Error processing message: {e}")
-
+            result = await asyncio.to_thread(matching_service.verify_face, db, str(task.student_id), task.face_image_base64)
+        finally:
+            db.close()
+        payload = FaceVerificationResult(
+            event_id=task.event_id,
+            attempt_id=task.attempt_id,
+            student_id=task.student_id,
+            verification_window_id=task.verification_window_id,
+            face_match=result["is_match"],
+            confidence=result["confidence"],
+            processing_ms=int((time.perf_counter()-started)*1000),
+        )
+        channel = message.channel
+        exchange = await channel.declare_exchange("face_verification_results_exchange", ExchangeType.DIRECT, durable=True)
+        queue = await channel.declare_queue("face_verification_results", durable=True)
+        await queue.bind(exchange, routing_key="face_verification_results")
+        await exchange.publish(aio_pika.Message(body=payload.model_dump_json().encode(), delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key="face_verification_results")
+        await message.ack()
+    except ValueError as exc:
+        logger.warning("invalid face task: %s", exc)
+        await message.nack(requeue=False)
+    except Exception:
+        logger.exception("AI verification failed")
+        retry_count = int((message.headers or {}).get("x-retry-count", 0))
+        if retry_count >= 2:
+            dlx = await message.channel.declare_exchange("face_verification_dlx", ExchangeType.DIRECT, durable=True)
+            dlq = await message.channel.declare_queue("face_verification_dead_letters", durable=True)
+            await dlq.bind(dlx, routing_key="dead")
+            headers = dict(message.headers or {})
+            headers["x-retry-count"] = retry_count + 1
+            await dlx.publish(aio_pika.Message(body=message.body, headers=headers, delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key="dead")
+            await message.ack()
+        else:
+            headers = dict(message.headers or {})
+            headers["x-retry-count"] = retry_count + 1
+            exchange = await message.channel.declare_exchange("face_verification_exchange", ExchangeType.DIRECT, durable=True)
+            await exchange.publish(aio_pika.Message(body=message.body, headers=headers, delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key="face_verification_queue")
+            await message.ack()
 
 async def init_rabbitmq_consumer():
-    global _connection, _channel
-    rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost/")
-    
-    max_retries = 30
-    retry_delay = 5
-    for attempt in range(max_retries):
+    global _connection
+    url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    for attempt in range(10):
         try:
-            _connection = await aio_pika.connect_robust(rabbitmq_url)
-            break
-        except Exception as e:
-            logger.warning(f"RabbitMQ connection failed (attempt {attempt+1}/{max_retries}): {e}")
-            if attempt == max_retries - 1:
-                raise
-            await asyncio.sleep(retry_delay)
-            
-    _channel = await _connection.channel()
-    
-    queue_name = os.environ.get("VERIFICATION_QUEUE_NAME", "face_verification_queue")
-    queue = await _channel.declare_queue(queue_name, durable=True)
-    
-    await queue.consume(process_message)
-    logger.info("RabbitMQ Consumer started and listening on queue: " + queue_name)
+            _connection = await aio_pika.connect_robust(url)
+            channel = await _connection.channel()
+            await channel.set_qos(prefetch_count=int(os.environ.get("AI_PREFETCH", "2")))
+            exchange = await channel.declare_exchange("face_verification_exchange", ExchangeType.DIRECT, durable=True)
+            queue = await channel.declare_queue("face_verification_queue", durable=True)
+            await queue.bind(exchange, routing_key="face_verification_queue")
+            await queue.consume(_handle)
+            logger.info("AI Vision RabbitMQ consumer started")
+            return
+        except Exception as exc:
+            if attempt == 9: raise
+            logger.warning("RabbitMQ connection attempt %s failed: %s", attempt+1, exc)
+            await asyncio.sleep(min(2**attempt, 10))
 
 async def close_rabbitmq_consumer():
+    global _connection
     if _connection:
-        await _connection.close()
+        await _connection.close(); _connection=None

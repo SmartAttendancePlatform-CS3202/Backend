@@ -1,0 +1,11 @@
+{
+  "extraPaths": [
+    "libs/shared-core",
+    "services/attendance-service",
+    "services/scheduling-service",
+    "services/ai-vision-service"
+  ],
+  "venvPath": "..",
+  "venv": ".venv",
+  "reportMissingImports": "warning"
+}

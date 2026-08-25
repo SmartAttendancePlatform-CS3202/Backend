@@ -1,9 +1,11 @@
-"""HTTP client for ai-vision-service — internal service-to-service call."""
+"""Deprecated synchronous AI Vision client.
+
+Attendance verification uses RabbitMQ asynchronously. This client remains only for
+small internal diagnostics/tests and never receives user traffic.
+"""
 import os
 import time
-
 import httpx
-
 from shared_core.config import get_settings
 from prometheus_client import Histogram
 
@@ -16,21 +18,18 @@ AI_VISION_LATENCY_SECONDS = Histogram(
 
 
 def verify_face(student_id: str, face_image_base64: str) -> dict:
-    settings = get_settings()
     base_url = os.environ.get("AI_VISION_SERVICE_URL", "http://ai-vision-service:8000")
-
-    start_time = time.time()
-    status = "500"
+    start = time.perf_counter()
+    status_code = "500"
     try:
-        resp = httpx.post(
-            f"{base_url}/verify",
+        response = httpx.post(
+            f"{base_url}/internal/verify",
             json={"student_id": student_id, "face_image_base64": face_image_base64},
-            headers={"X-Internal-Key": settings.internal_api_key},
+            headers={"X-Internal-Key": get_settings().internal_api_key},
             timeout=10.0,
         )
-        status = str(resp.status_code)
-        resp.raise_for_status()
-        return resp.json()
+        status_code = str(response.status_code)
+        response.raise_for_status()
+        return response.json()
     finally:
-        duration = time.time() - start_time
-        AI_VISION_LATENCY_SECONDS.labels(endpoint="verify", status_code=status).observe(duration)
+        AI_VISION_LATENCY_SECONDS.labels(endpoint="verify", status_code=status_code).observe(time.perf_counter() - start)

@@ -8,10 +8,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
+from urllib.parse import urlparse, urlencode, parse_qsl, urlunparse
+
 def _normalize_database_url(database_url: str) -> str:
     if database_url.startswith("postgres://"):
-        return database_url.replace("postgres://", "postgresql://", 1)
-    return database_url
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Strip pgbouncer parameter
+    parsed = urlparse(database_url)
+    query = dict(parse_qsl(parsed.query))
+    if "pgbouncer" in query:
+        del query["pgbouncer"]
+    parsed = parsed._replace(query=urlencode(query))
+    return urlunparse(parsed)
 
 
 @lru_cache(maxsize=1)

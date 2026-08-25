@@ -6,20 +6,20 @@ from shared_core.models.enums import UserRole, UserStatus
 
 class UserOut(BaseModel):
     id: UUID
-    # NOTE: the `users` table (public.users) does not store email — it lives only on
-    # Supabase's auth.users. Until that's synced/joined in, this is best-effort and
-    # will be null for records built from the local `users` table alone.
-    email: Optional[str] = None
+    username: str
     role: UserRole
     status: UserStatus
+    is_active: bool
     created_at: datetime
     updated_at: datetime
-    
     model_config = ConfigDict(from_attributes=True)
 
 class UserRoleUpdate(BaseModel):
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
+    display_name: Optional[str] = None
+    department_id: Optional[UUID] = None
+    identifier: Optional[str] = None
 
 class StudentOut(UserOut):
     student_index_no: str
@@ -34,6 +34,8 @@ class StudentOut(UserOut):
     contact_number: Optional[str] = None
     address: Optional[str] = None
     photo_url: Optional[str] = None
+    department_name: Optional[str] = None
+    academic_year_name: Optional[str] = None
 
 class StudentUpdate(BaseModel):
     contact_number: Optional[str] = None
@@ -41,15 +43,10 @@ class StudentUpdate(BaseModel):
     photo_url: Optional[str] = None
 
 class LecturerOut(UserOut):
-    # The ORM column is `lecturer_code`, not `employee_id` — the frontend's Lecturer
-    # type expects `employee_id`, so we map it here via validation_alias rather than
-    # renaming the DB column.
-    employee_id: Optional[str] = Field(default=None, validation_alias="lecturer_code")
-    full_name: str
-    name_with_initials: str
-    display_name: str
+    lecturer_code: Optional[str] = None
     department_id: Optional[UUID] = None
     contact_number: Optional[str] = None
+    email: Optional[str] = None
     photo_url: Optional[str] = None
 
 

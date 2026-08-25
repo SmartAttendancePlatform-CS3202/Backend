@@ -25,7 +25,12 @@ class SessionCreate(BaseModel):
     scheduled_at: datetime
     duration_mins: int
     notes: Optional[str] = None
-    session_number: int
+    session_number: Optional[int] = None
+
+
+class AttendanceOverrideRequest(BaseModel):
+    status: str
+    override_reason: Optional[str] = None
 
 
 class LectureSessionOut(BaseModel):
@@ -40,6 +45,12 @@ class LectureSessionOut(BaseModel):
     notes: Optional[str] = None
     session_number: int
     created_at: datetime
+    total_enrolled: int = 0
+    present_count: int = 0
+    late_count: int = 0
+    flagged_count: int = 0
+    absent_count: int = 0
+    verified_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,6 +69,10 @@ class AttendanceRecordOut(BaseModel):
     overridden_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    student_name: Optional[str] = None
+    student_index: Optional[str] = None
+    student_photo: Optional[str] = None
+    override_by_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,5 +94,7 @@ class AttemptOut(BaseModel):
     failure_reason: Optional[str] = None
     device_info: Optional[dict] = None
     attempted_at: datetime
+    student_name: Optional[str] = None
+    student_index: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

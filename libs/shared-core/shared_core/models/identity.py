@@ -19,6 +19,9 @@ class Department(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column(String, nullable=False)
+    code: Mapped[str | None] = mapped_column(String)
+    faculty_head: Mapped[str | None] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text)
     faculty_name: Mapped[str | None] = mapped_column(String)
     contact_number: Mapped[str | None] = mapped_column(String)
 
@@ -89,6 +92,22 @@ class Student(Base):
     attendance_records: Mapped[list["AttendanceRecord"]] = relationship(back_populates="student")
     verification_attempts: Mapped[list["AttendanceVerificationAttempt"]] = relationship(back_populates="student")
 
+    @property
+    def department_name(self): return self.department.name if self.department else None
+    @property
+    def academic_year_name(self): return self.academic_year.name if self.academic_year else None
+    
+    @property
+    def username(self): return self.user.username if self.user else ""
+    @property
+    def role(self): return self.user.role if self.user else None
+    @property
+    def status(self): return self.user.status if self.user else None
+    @property
+    def is_active(self): return self.user.is_active if self.user else False
+    @property
+    def updated_at(self): return self.user.updated_at if self.user else self.created_at
+
 
 class Lecturer(Base):
     __tablename__ = "lecturers"
@@ -105,3 +124,18 @@ class Lecturer(Base):
     user: Mapped["User"] = relationship(back_populates="lecturer_profile", foreign_keys=[id])
     department: Mapped["Department"] = relationship(back_populates="lecturers")
     course_offerings: Mapped[list["CourseOffering"]] = relationship(back_populates="lecturer")
+
+    @property
+    def username(self): return self.user.username if self.user else ""
+    @property
+    def role(self): return self.user.role if self.user else None
+    @property
+    def status(self): return self.user.status if self.user else None
+    @property
+    def is_active(self): return self.user.is_active if self.user else False
+    @property
+    def updated_at(self): return self.user.updated_at if self.user else self.created_at
+    @property
+    def display_name(self): return self.email or self.username
+    @property
+    def full_name(self): return self.email or self.username

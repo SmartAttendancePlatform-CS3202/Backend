@@ -1,32 +1,36 @@
-import base64
+import base64, binascii
 import numpy as np
 import cv2
 from deepface import DeepFace
 
-def extract_embedding(image_base64: str) -> list[float]:
-    """
-    Decodes a base64 image and extracts a 512-dimension face embedding using DeepFace (Facenet512).
-    """
-    # 1. Decode base64 string to bytes
-    if "," in image_base64:
-        image_base64 = image_base64.split(",")[1]
-    img_data = base64.b64decode(image_base64)
-    
-    # 2. Convert to numpy array and decode image using OpenCV
-    np_arr = np.frombuffer(img_data, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    
-    if img is None:
-        raise ValueError("Failed to decode image")
+MAX_IMAGE_BYTES = 5_000_000
 
-    # 3. Extract embedding
-    # We use Facenet512 to match the Vector(512) requirement
+
+def _decode_image(image_base64: str):
+    raw = image_base64.split(',',1)[1] if ',' in image_base64 else image_base64
+    try: data = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc: raise ValueError("Invalid base64 image") from exc
+    if len(data) > MAX_IMAGE_BYTES: raise ValueError("Image exceeds 5 MB")
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None: raise ValueError("Invalid image data")
+    return img
+
+
+def extract_embedding(image_base64: str) -> list[float]:
+    img = _decode_image(image_base64)
     try:
         results = DeepFace.represent(img_path=img, model_name="Facenet512", enforce_detection=True)
-        if not results:
-            raise ValueError("No face detected")
-        # DeepFace.represent returns a list of dictionaries (one for each face detected)
-        embedding = results[0]["embedding"]
-        return embedding
-    except Exception as e:
-        raise ValueError(f"Face extraction failed: {str(e)}")
+    except Exception as exc:
+        raise ValueError(f"Face extraction failed: {exc}") from exc
+    if not results: raise ValueError("No face detected")
+    embedding = results[0]["embedding"]
+    if len(embedding) != 512: raise ValueError("Unexpected embedding dimension")
+    return [float(x) for x in embedding]
+
+
+def estimate_quality(image_base64: str) -> float:
+    img = _decode_image(image_base64)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Lightweight sharpness proxy. Normalized only for storage/diagnostics.
+    variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    return min(1.0, variance / 500.0)

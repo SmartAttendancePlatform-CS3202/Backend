@@ -1,0 +1,31 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: scheduling-service
+    url: http://scheduling-service:8000
+    routes:
+      - name: scheduling-route
+        paths: ["/scheduling"]
+        strip_path: true
+        protocols: ["http", "https"]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+
+  - name: attendance-service
+    url: http://attendance-service:8000
+    routes:
+      - name: attendance-route
+        paths: ["/attendance"]
+        strip_path: true
+        protocols: ["http", "https"]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+
+# ai-vision-service deliberately has no public Kong route. It stays inside the Docker/Kubernetes network.

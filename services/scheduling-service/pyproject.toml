@@ -23,3 +23,9 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 exclude = ["migrations*"]
+
+[tool.pyright]
+venvPath = "../../.."
+venv = ".venv"
+extraPaths = ["../../libs/shared-core"]
+
