@@ -15,6 +15,10 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 def get_my_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return notification_service.get_my_notices(db, current_user.id)
 
+@router.get("/all")
+def get_all_notifications(current_user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    return notification_service.get_all_notices(db)
+
 @router.post("/broadcast", status_code=status.HTTP_201_CREATED)
 def broadcast_notification(data: NoticeBroadcast, current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
     if getattr(current_user.role, "value", current_user.role) == "lecturer" and data.course_offering_id:

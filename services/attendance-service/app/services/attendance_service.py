@@ -37,9 +37,22 @@ def start_session(db: Session, data: dict, current_user):
         raise HTTPException(403, "You are not assigned to this offering")
     session = attendance_repository.create_session(db, data)
     attendance_repository.schedule_check_in_window(db, session, duration_mins=15)
-    if offering.get("random_check_enabled"):
-        attendance_repository.schedule_random_window(db, session, int(offering.get("random_check_window_minutes", 10)))
     return session
+
+def trigger_random_window(db: Session, session_id: UUID, current_user):
+    session = attendance_repository.get_session(db, session_id)
+    if not session: raise HTTPException(404, "Lecture session not found")
+    if str(getattr(current_user.role, "value", current_user.role)) == "lecturer" and session.course_offering.lecturer_id != current_user.id:
+        raise HTTPException(403, "You are not assigned to this offering")
+    if getattr(session.status, "value", session.status) != "ongoing":
+        raise HTTPException(400, "Session is not ongoing")
+    
+    # Check if a random window already exists for this session
+    existing_window = next((w for w in session.verification_windows if getattr(w.window_type, "value", w.window_type) == "random_check"), None)
+    if existing_window:
+        raise HTTPException(400, "A random check-in window has already been triggered for this session")
+        
+    return attendance_repository.schedule_random_window(db, session, window_minutes=10)
 
 
 def end_session(db: Session, session_id: UUID, current_user):

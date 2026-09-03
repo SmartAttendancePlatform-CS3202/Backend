@@ -6,9 +6,10 @@ from typing import List, Optional
 from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
-from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut
+from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut, StudentRegistrationRequest
 from shared_core.models.identity import User
 from shared_core.models.enums import UserRole, UserStatus
+
 from shared_core.audit import audit
 
 try:
@@ -18,6 +19,20 @@ except ImportError:  # pragma: no cover
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+@router.post("/register", response_model=UserOut)
+def register_student_user(
+    data: StudentRegistrationRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    try:
+        user = user_service.register_student(db, data, current_user.id)
+        audit(db, current_user.id, "user.register", "user", user.id, new_data={"email": data.email, "role": "student"})
+        return user
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -88,6 +103,15 @@ def list_lecturers(
     profile fields, with optional role/status filters. Backs the web dashboard's
     Admin > Users page."""
     return user_service.get_all_lecturers(db, skip=skip, limit=limit)
+
+@router.get("/students", response_model=List[StudentOut])
+def list_students(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(require_role(["admin", "lecturer"])),
+    db: Session = Depends(get_db)
+):
+    return user_service.get_all_students(db, skip=skip, limit=limit)
 
 @router.get("/students/me", response_model=StudentOut)
 def get_my_student_profile(
