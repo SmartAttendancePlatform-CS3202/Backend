@@ -51,3 +51,17 @@ def update_student(db: Session, student: Student, update_data: dict) -> Student:
     db.commit()
     db.refresh(student)
     return student
+
+def create_user(db: Session, user_data: dict) -> User:
+    user = User(**user_data)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def create_student(db: Session, student_data: dict) -> Student:
+    student = Student(**student_data)
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+    return student

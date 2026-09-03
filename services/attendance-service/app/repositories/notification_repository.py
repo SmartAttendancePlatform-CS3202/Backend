@@ -43,6 +43,10 @@ def get_notices(db: Session, user_id: UUID) -> List[dict]:
     notices = db.query(Notice).order_by(Notice.created_at.desc()).limit(200).all()
     return [_serialize(n, user_id, db) for n in notices if user and _visible(n, user, db) and (not n.expires_at or n.expires_at >= __import__('datetime').datetime.now(__import__('datetime').timezone.utc))]
 
+def get_all_notices(db: Session) -> List[dict]:
+    notices = db.query(Notice).order_by(Notice.created_at.desc()).limit(200).all()
+    return [_serialize(n, n.created_by, db) for n in notices]
+
 
 def create_notice(db: Session, data: dict, creator_id: UUID) -> dict:
     obj = Notice(**data, created_by=creator_id)
