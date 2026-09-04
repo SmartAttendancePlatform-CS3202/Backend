@@ -16,7 +16,7 @@ class FaceProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
-    embedding: Mapped[Any] = mapped_column(Vector(512), nullable=False)
+    embedding: Mapped[Any] = mapped_column(Vector(192), nullable=False)
     reference_photo_url: Mapped[str] = mapped_column(Text, nullable=False)
     quality_score: Mapped[float | None] = mapped_column(Numeric)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
