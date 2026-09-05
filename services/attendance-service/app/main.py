@@ -17,6 +17,8 @@ from shared_core.config import get_settings
 from app.routers import sessions, checkin, reports, attendance, onboarding, notifications, alerts
 from app.rabbitmq.publisher import init_rabbitmq, close_rabbitmq
 from app.rabbitmq.result_consumer import start_result_consumer, stop_result_consumer
+from shared_core.telemetry import setup_telemetry, instrument_app
+setup_telemetry("attendance-service") 
 
 setup_logging("attendance-service")
 
@@ -33,6 +35,7 @@ app.add_middleware(RequestGuardMiddleware)
 app.add_middleware(StructlogMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=get_settings().allowed_origin_list,allow_credentials=True,allow_methods=["GET","POST","PATCH","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Request-ID"])
 Instrumentator().instrument(app).expose(app)
+instrument_app(app)
 for router in (sessions.router,checkin.router,reports.router,attendance.router,onboarding.router,notifications.router,alerts.router): app.include_router(router)
 
 @app.get("/",response_class=HTMLResponse,include_in_schema=False)
