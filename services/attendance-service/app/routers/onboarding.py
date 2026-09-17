@@ -1,11 +1,10 @@
-import os
 import httpx
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
 from prometheus_client import Counter
 from shared_core.auth.rbac import require_role
-from shared_core.config import get_settings
 from shared_core.models.identity import User
+from app.clients import ai_vision_client
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 REGISTER_FACE_ATTEMPTS = Counter("register_face_attempt_count", "Face registration attempts", ["reason"])
@@ -16,17 +15,13 @@ class RegisterFaceRequest(BaseModel):
 @router.post("/register-face")
 async def register_face(data: RegisterFaceRequest, current_user: User = Depends(require_role("student"))):
     REGISTER_FACE_ATTEMPTS.labels(reason="attempt").inc()
-    settings = get_settings()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{os.environ.get('AI_VISION_SERVICE_URL', 'http://ai-vision-service:8000')}/internal/register",
-                json={"student_id": str(current_user.id), "face_image_base64": data.face_image_base64},
-                headers={"X-Internal-Key": settings.internal_api_key},
-            )
-            resp.raise_for_status()
-            REGISTER_FACE_ATTEMPTS.labels(reason="success").inc()
-            return resp.json()
+        result = await ai_vision_client.register_face(
+            student_id=str(current_user.id),
+            face_image_base64=data.face_image_base64,
+        )
+        REGISTER_FACE_ATTEMPTS.labels(reason="success").inc()
+        return result
     except httpx.HTTPStatusError as exc:
         REGISTER_FACE_ATTEMPTS.labels(reason="failed").inc()
         raise HTTPException(exc.response.status_code, f"Face registration failed: {exc.response.text}") from exc

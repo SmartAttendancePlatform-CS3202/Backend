@@ -60,10 +60,13 @@ kind: Service
 metadata:
   name: ai-vision-service
   namespace: smart-attendance
+  labels:
+    app: ai-vision-service
 spec:
   type: ClusterIP
   selector:
     app: ai-vision-service
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
