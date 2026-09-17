@@ -7,6 +7,8 @@ from shared_core.logging import setup_logging
 from shared_core.middleware import RequestGuardMiddleware, StructlogMiddleware
 from app.routers import verify
 from app.rabbitmq.consumer import init_rabbitmq_consumer, close_rabbitmq_consumer
+from shared_core.telemetry import setup_telemetry, instrument_app
+setup_telemetry("ai-service") 
 setup_logging("ai-vision-service")
 @asynccontextmanager
 async def lifespan(app:FastAPI):
@@ -15,6 +17,7 @@ app=FastAPI(title="AI Vision Service",version="2.0.0",description=service_descri
 app.add_middleware(RequestGuardMiddleware); app.add_middleware(StructlogMiddleware)
 # CORS intentionally disabled for client use; internal calls use service authentication.
 Instrumentator().instrument(app).expose(app)
+instrument_app(app)
 app.include_router(verify.router)
 @app.get("/",response_class=HTMLResponse,include_in_schema=False)
 def root(): return API_INDEX_HTML

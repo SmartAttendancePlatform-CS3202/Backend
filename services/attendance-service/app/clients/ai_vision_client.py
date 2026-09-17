@@ -1,7 +1,7 @@
-"""Deprecated synchronous AI Vision client.
+"""AI Vision HTTP client with Prometheus latency metrics.
 
-Attendance verification uses RabbitMQ asynchronously. This client remains only for
-small internal diagnostics/tests and never receives user traffic.
+Face registration (onboarding) uses HTTP. Attendance verification uses RabbitMQ
+asynchronously; ``verify_face`` remains for diagnostics/tests only.
 """
 import os
 import time
@@ -17,19 +17,49 @@ AI_VISION_LATENCY_SECONDS = Histogram(
 )
 
 
+def _base_url() -> str:
+    return os.environ.get("AI_VISION_SERVICE_URL", "http://ai-vision-service:8000")
+
+
+def _headers() -> dict[str, str]:
+    return {"X-Internal-Key": get_settings().internal_api_key}
+
+
+async def register_face(student_id: str, face_image_base64: str) -> dict:
+    start = time.perf_counter()
+    status_code = "500"
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{_base_url()}/internal/register",
+                json={"student_id": student_id, "face_image_base64": face_image_base64},
+                headers=_headers(),
+            )
+            status_code = str(response.status_code)
+            response.raise_for_status()
+            return response.json()
+    finally:
+        AI_VISION_LATENCY_SECONDS.labels(
+            endpoint="register",
+            status_code=status_code,
+        ).observe(time.perf_counter() - start)
+
+
 def verify_face(student_id: str, face_image_base64: str) -> dict:
-    base_url = os.environ.get("AI_VISION_SERVICE_URL", "http://ai-vision-service:8000")
     start = time.perf_counter()
     status_code = "500"
     try:
         response = httpx.post(
-            f"{base_url}/internal/verify",
+            f"{_base_url()}/internal/verify",
             json={"student_id": student_id, "face_image_base64": face_image_base64},
-            headers={"X-Internal-Key": get_settings().internal_api_key},
+            headers=_headers(),
             timeout=10.0,
         )
         status_code = str(response.status_code)
         response.raise_for_status()
         return response.json()
     finally:
-        AI_VISION_LATENCY_SECONDS.labels(endpoint="verify", status_code=status_code).observe(time.perf_counter() - start)
+        AI_VISION_LATENCY_SECONDS.labels(
+            endpoint="verify",
+            status_code=status_code,
+        ).observe(time.perf_counter() - start)

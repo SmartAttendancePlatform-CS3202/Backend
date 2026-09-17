@@ -57,3 +57,73 @@ def update_user_status(db: Session, user_id: UUID, status: str):
     user = user_repository.get_user(db, user_id)
     if not user: return None
     return user_repository.update_user(db, user=user, update_data={"status": status, "is_active": status == "active"})
+
+import httpx
+from shared_core.config import get_settings
+from fastapi import HTTPException
+from shared_core.schemas.identity import StudentRegistrationRequest
+
+def register_student(db: Session, data: StudentRegistrationRequest, current_user_id: UUID):
+    settings = get_settings()
+    # 1. Create user in Supabase
+    headers = {
+        "apikey": settings.supabase_service_role_key,
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "email": data.email,
+        "password": data.password,
+        "email_confirm": True,
+        "user_metadata": {
+            "role": "student",
+            "username": data.email.split('@')[0],
+        },
+    }
+    res = httpx.post(
+        f"{settings.supabase_url}/auth/v1/admin/users",
+        headers=headers,
+        json=payload,
+    )
+    if res.status_code not in (200, 201):
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("message", "Failed to create user in Supabase"))
+    
+    supabase_user = res.json()
+    new_user_id = UUID(supabase_user["id"])
+
+    # 2. Create User in Postgres
+    user_data = {
+        "id": new_user_id,
+        "username": data.email,
+        "role": "student",
+        "status": "active",
+        "is_active": True,
+        "must_change_password": False,
+    }
+    
+    # Supabase might have an auth trigger that auto-creates the public.users row.
+    existing_user = user_repository.get_user(db, new_user_id)
+    if existing_user:
+        user_repository.update_user(db, existing_user, {"role": "student", "status": "active", "is_active": True})
+    else:
+        user_repository.create_user(db, user_data)
+
+    # 3. Create Student in Postgres
+    student_data = {
+        "id": new_user_id,
+        "student_index_no": data.student_index_no,
+        "full_name": data.full_name,
+        "name_with_initials": data.name_with_initials,
+        "display_name": data.display_name,
+        "department_id": data.department_id,
+        "academic_year_id": data.academic_year_id,
+        "date_of_birth": data.date_of_birth,
+        "gender": data.gender,
+        "nic": data.nic,
+        "contact_number": data.contact_number,
+        "address": data.address,
+        "registered_by": current_user_id
+    }
+    user_repository.create_student(db, student_data)
+    
+    return user_repository.get_user(db, new_user_id)

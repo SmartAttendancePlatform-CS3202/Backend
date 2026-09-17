@@ -50,6 +50,22 @@ class LecturerOut(UserOut):
     photo_url: Optional[str] = None
 
 
+class StudentRegistrationRequest(BaseModel):
+    email: str = Field(..., description="Student email (username)")
+    password: str = Field(..., min_length=6, description="Initial password")
+    student_index_no: str
+    full_name: str
+    name_with_initials: str
+    display_name: str
+    department_id: UUID
+    academic_year_id: UUID
+    date_of_birth: date
+    gender: str
+    nic: Optional[str] = None
+    contact_number: Optional[str] = None
+    address: Optional[str] = None
+
+
 class UserDirectoryOut(BaseModel):
     """Flattened admin-directory view of a user: base account fields plus
     whichever profile (student/lecturer) applies. Used by GET /users."""

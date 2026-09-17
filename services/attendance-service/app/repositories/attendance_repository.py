@@ -49,18 +49,12 @@ def schedule_check_in_window(db: Session, session: LectureSession, duration_mins
 
 def schedule_random_window(db: Session, session: LectureSession, window_minutes: int):
     now = datetime.now(timezone.utc)
-    # Never reveal the future exact time through the student API before it opens.
-    first = 15
-    latest = max(first, session.duration_mins - window_minutes - 2)
-    offset = random.randint(first, latest) if latest > first else first
-    opening = now + timedelta(minutes=offset)
     obj = VerificationWindow(
         lecture_session_id=session.id,
         window_type=WindowType.random_check,
-        scheduled_open_at=opening,
-        scheduled_close_at=opening + timedelta(minutes=window_minutes),
-        actual_opened_at=None,
-        actual_closed_at=None,
+        scheduled_open_at=now,
+        scheduled_close_at=now + timedelta(minutes=window_minutes),
+        actual_opened_at=now,
         is_active=True,
     )
     db.add(obj); db.commit(); db.refresh(obj); return obj

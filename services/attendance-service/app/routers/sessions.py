@@ -40,6 +40,11 @@ def end_session(id: UUID, current_user: User = Depends(require_role("lecturer", 
 def windows(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return attendance_service.get_active_windows(db, id, current_user.id if getattr(current_user.role,'value',current_user.role)=='student' else None)
 
+@router.post("/{id}/windows/random")
+def trigger_random_window(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
+    window = attendance_service.trigger_random_window(db, id, current_user)
+    return {"message": "Random window triggered successfully", "window_id": window.id}
+
 @router.get("/{id}/live")
 def live(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
     session = attendance_service.get_session(db, id)

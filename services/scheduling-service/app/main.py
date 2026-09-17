@@ -11,6 +11,8 @@ from shared_core.openapi import API_INDEX_HTML, SWAGGER_UI_PARAMETERS, service_d
 from shared_core.logging import setup_logging
 from shared_core.middleware import RequestGuardMiddleware, StructlogMiddleware
 from shared_core.config import get_settings
+from shared_core.telemetry import setup_telemetry, instrument_app
+setup_telemetry("scheduling-service") 
 from .routers import (
     academic_years,
     admin,
@@ -27,6 +29,7 @@ app=FastAPI(title="Scheduling Service",version="2.0.0",description=service_descr
 app.add_middleware(RequestGuardMiddleware); app.add_middleware(StructlogMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=get_settings().allowed_origin_list,allow_credentials=True,allow_methods=["GET","POST","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Internal-Key","X-Request-ID"])
 Instrumentator().instrument(app).expose(app)
+instrument_app(app)
 for router in (users.router,departments.router,academic_years.router,courses.router,offerings.router,venues.router,enrollments.router,timetables.router,admin.router): app.include_router(router)
 @app.get("/",response_class=HTMLResponse,include_in_schema=False)
 def root(): return API_INDEX_HTML

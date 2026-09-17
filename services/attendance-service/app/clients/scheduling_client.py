@@ -1,5 +1,7 @@
 import os
+import time
 import httpx
+from prometheus_client import Histogram
 from shared_core.config import get_settings
 
 SCHEDULING_LATENCY_SECONDS = Histogram(
@@ -19,24 +21,17 @@ def _url() -> str:
 
 
 def get_offering(course_offering_id):
-    resp = httpx.get(f"{_url()}/offerings/internal/{course_offering_id}", headers=_headers(), timeout=5.0)
-    resp.raise_for_status()
-    return resp.json()
-
     start_time = time.time()
     status = "500"
     try:
-        resp = httpx.get(
-            f"{base_url}/courses/offerings/{course_offering_id}",
-            headers={"X-Internal-Key": settings.internal_api_key},
-        )
+        resp = httpx.get(f"{_url()}/offerings/internal/{course_offering_id}", headers=_headers(), timeout=5.0)
         status = str(resp.status_code)
         resp.raise_for_status()
         return resp.json()
     finally:
         duration = time.time() - start_time
         SCHEDULING_LATENCY_SECONDS.labels(
-            endpoint="courses/offerings/{course_offering_id}",
+            endpoint="offerings/internal/{course_offering_id}",
             status=status,
         ).observe(duration)
 
