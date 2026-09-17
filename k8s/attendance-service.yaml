@@ -58,10 +58,13 @@ kind: Service
 metadata:
   name: attendance-service
   namespace: smart-attendance
+  labels:
+    app: attendance-service
 spec:
   type: ClusterIP
   selector:
     app: attendance-service
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
