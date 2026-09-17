@@ -19,6 +19,12 @@ def setup_telemetry(service_name: str | None = None) -> None:
     if not endpoint:
         return
 
+    # gRPC OTLP exporter expects host:port (strip URL scheme if present)
+    for prefix in ("https://", "http://"):
+        if endpoint.startswith(prefix):
+            endpoint = endpoint[len(prefix):]
+            break
+
     resource = Resource.create({
         "service.name": name,
         "service.namespace": "smart-attendance"
