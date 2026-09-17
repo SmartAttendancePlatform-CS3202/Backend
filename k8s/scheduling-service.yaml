@@ -51,10 +51,13 @@ kind: Service
 metadata:
   name: scheduling-service
   namespace: smart-attendance
+  labels:
+    app: scheduling-service
 spec:
   type: ClusterIP
   selector:
     app: scheduling-service
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000

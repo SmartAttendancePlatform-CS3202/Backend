@@ -11,3 +11,6 @@ data:
   ALLOWED_ORIGINS: "https://attendance.example.com"
   RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
   VERIFICATION_QUEUE_NAME: "face_verification_queue"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger.tracing.svc.cluster.local:4317"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_PROPAGATORS: "tracecontext,baggage"
