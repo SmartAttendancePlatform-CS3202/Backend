@@ -40,8 +40,7 @@ services:
     env_file: [services/ai-vision-service/.env]
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      TF_CPP_MIN_LOG_LEVEL: 2
-      TF_ENABLE_ONEDNN_OPTS: 0
+      FACE_SIMILARITY_THRESHOLD: "0.70"
     volumes:
       - ./services/ai-vision-service/app:/app/app
       - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
