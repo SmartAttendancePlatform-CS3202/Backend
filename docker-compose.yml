@@ -7,8 +7,8 @@ services:
     environment:
       SERVICE_NAME: scheduling-service
     volumes:
-      - ./services/scheduling-service/app:/app/app
-      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+      - ./services/scheduling-service/app:/app/app:z
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core:z
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     expose: ["8000"]
 
@@ -22,8 +22,8 @@ services:
       AI_VISION_SERVICE_URL: http://ai-vision-service:8000
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     volumes:
-      - ./services/attendance-service/app:/app/app
-      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+      - ./services/attendance-service/app:/app/app:z
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core:z
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     expose: ["8000"]
     depends_on:
@@ -42,8 +42,8 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       FACE_SIMILARITY_THRESHOLD: "0.70"
     volumes:
-      - ./services/ai-vision-service/app:/app/app
-      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core
+      - ./services/ai-vision-service/app:/app/app:z
+      - ./libs/shared-core/shared_core:/usr/local/lib/python3.12/site-packages/shared_core:z
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     expose: ["8000"]
     depends_on:
@@ -58,10 +58,11 @@ services:
       - "5672:5672"
       - "15672:15672"
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "nc", "-z", "localhost", "5672"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 10s
 
   kong:
     image: kong:3.9
@@ -75,7 +76,7 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
     volumes:
-      - ./kong/kong.yml:/kong/kong.yml:ro
+      - ./kong/kong.yml:/kong/kong.yml:ro,z
     ports:
       - "8000:8000"
       - "8443:8443"
