@@ -8,22 +8,9 @@ class FaceVerificationTask(BaseModel):
     attempt_id: UUID
     student_id: UUID
     verification_window_id: UUID
-    face_image_base64: str = Field(min_length=100, max_length=6_800_000)
+    face_embedding: list[float] = Field(min_length=192, max_length=192, description="192-D MobileFaceNet embedding vector")
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-
-    @field_validator("face_image_base64")
-    @classmethod
-    def validate_image_payload(cls, value: str) -> str:
-        raw = value.split(',', 1)[1] if ',' in value else value
-        import base64, binascii
-        try:
-            decoded = base64.b64decode(raw, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise ValueError("Invalid base64 image") from exc
-        if len(decoded) > 5_000_000:
-            raise ValueError("Face image exceeds 5 MB")
-        return value
 
 
 class FaceVerificationResult(BaseModel):
