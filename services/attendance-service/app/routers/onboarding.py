@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import httpx
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,7 +18,19 @@ class RegisterFaceRequest(BaseModel):
         ...,
         min_length=192,
         max_length=192,
-        description="192-dimensional MobileFaceNet embedding vector",
+        description="192-dimensional centroid MobileFaceNet embedding vector",
+    )
+    pose_embeddings: Optional[List[List[float]]] = Field(
+        default=None,
+        description="List of 192D embeddings captured across guided poses (Center, Left, Right, Up, Down)",
+    )
+    depth_features: Optional[List[float]] = Field(
+        default=None,
+        description="48D pseudo-depth and contour geometry feature vector",
+    )
+    enrollment_metadata: Optional[dict] = Field(
+        default=None,
+        description="Pose Euler angles, lighting scores, and capture quality metrics",
     )
     quality_score: float = Field(default=1.0, ge=0.0, le=1.0)
 
@@ -35,6 +47,9 @@ def register_face(
             student_id=str(current_user.id),
             face_embedding=data.face_embedding,
             quality_score=data.quality_score,
+            pose_embeddings=data.pose_embeddings,
+            depth_features=data.depth_features,
+            enrollment_metadata=data.enrollment_metadata,
         )
         REGISTER_FACE_ATTEMPTS.labels(reason="success").inc()
         return res
