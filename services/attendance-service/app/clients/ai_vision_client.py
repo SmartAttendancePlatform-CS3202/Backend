@@ -25,13 +25,20 @@ def _headers() -> dict[str, str]:
     return {"X-Internal-Key": get_settings().internal_api_key}
 
 
-def verify_face(student_id: str, face_embedding: list[float]) -> dict:
+def verify_face(
+    student_id: str,
+    face_embedding: list[float],
+    depth_features: list[float] | None = None,
+) -> dict:
     start = time.perf_counter()
     status_code = "500"
     try:
+        payload = {"student_id": student_id, "face_embedding": face_embedding}
+        if depth_features is not None:
+            payload["depth_features"] = depth_features
         response = httpx.post(
             f"{_base_url()}/internal/verify",
-            json={"student_id": student_id, "face_embedding": face_embedding},
+            json=payload,
             headers=_headers(),
             timeout=10.0,
         )

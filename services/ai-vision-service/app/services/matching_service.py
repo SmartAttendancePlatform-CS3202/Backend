@@ -1,5 +1,6 @@
 import math
 import os
+from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 from app.repositories import face_data_repository
@@ -47,8 +48,8 @@ def register_face(
     pose_embeddings: list[list[float]] | None = None,
     depth_features: list[float] | None = None,
     enrollment_metadata: dict | None = None,
-    enrollment_version: int = 2,
-) -> dict:
+    enrollment_version: int = 3,
+) -> dict[str, Any]:
     valid_centroid = _validate_vector(embedding)
 
     validated_poses = None
@@ -91,12 +92,35 @@ def verify_face(
     live_embedding: list[float],
     live_depth_features: list[float] | None = None,
     trigger_adaptive_learning: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     live = _validate_vector(live_embedding)
 
     profile = face_data_repository.get_active_embedding(db, student_id)
     if not profile:
         raise ValueError(f"NO_ACTIVE_PROFILE: No active face profile found for student {student_id}")
+
+    threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", str(DEFAULT_SIMILARITY_THRESHOLD)))
+
+    # Version check: Require modern v3 RGB embeddings
+    raw_version = getattr(profile, "enrollment_version", 3)
+    if isinstance(raw_version, (int, float)):
+        version = int(raw_version)
+    else:
+        try:
+            version = int(str(raw_version))
+        except (ValueError, TypeError):
+            version = 3
+
+    if version < 3:
+        return {
+            "is_match": False,
+            "confidence": 0.0,
+            "centroid_similarity": 0.0,
+            "threshold": threshold,
+            "student_id": student_id,
+            "requires_re_registration": True,
+            "message": "Legacy biometric profile detected. Please re-register your face.",
+        }
 
     ref = np.asarray(profile.embedding, dtype=np.float64)
     if ref.shape[0] != EXPECTED_EMBEDDING_DIM:
@@ -140,15 +164,26 @@ def verify_face(
         except Exception:
             depth_sim = None
 
-    # Weighted Score Fusion
-    if best_pose_sim is not None and depth_sim is not None:
-        confidence = 0.5 * centroid_sim + 0.3 * best_pose_sim + 0.2 * depth_sim
-    elif best_pose_sim is not None:
-        confidence = 0.6 * centroid_sim + 0.4 * best_pose_sim
+    # Identity Confidence: Unskewed facial cosine similarity
+    if best_pose_sim is not None:
+        confidence = max(centroid_sim, best_pose_sim)
     else:
         confidence = centroid_sim
 
-    threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", str(DEFAULT_SIMILARITY_THRESHOLD)))
+    # Anti-Spoofing Gate: Reject if 3D pseudo-depth topology fails sanity threshold
+    MIN_DEPTH_THRESHOLD = 0.40
+    if depth_sim is not None and depth_sim < MIN_DEPTH_THRESHOLD:
+        return {
+            "is_match": False,
+            "confidence": round(confidence, 4),
+            "centroid_similarity": round(centroid_sim, 4),
+            "best_pose_similarity": round(best_pose_sim, 4) if best_pose_sim is not None else None,
+            "depth_similarity": round(depth_sim, 4),
+            "threshold": threshold,
+            "student_id": student_id,
+            "message": "Face liveness/topology verification failed. Please try again.",
+        }
+
     is_match = confidence >= threshold
 
     # Automated silent adaptive learning
@@ -164,7 +199,7 @@ def verify_face(
         except Exception:
             pass  # Non-blocking for verification
 
-    result = {
+    result: dict[str, Any] = {
         "is_match": is_match,
         "confidence": round(confidence, 4),
         "centroid_similarity": round(centroid_sim, 4),

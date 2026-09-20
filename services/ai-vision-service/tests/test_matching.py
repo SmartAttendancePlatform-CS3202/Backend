@@ -97,4 +97,43 @@ def test_register_face():
         res = register_face(db, student_id, vec, quality_score=0.95)
         assert res["status"] == "success"
         assert res["student_id"] == student_id
+        assert res["enrollment_version"] == 3
         mock_save.assert_called_once()
+
+
+def test_verify_face_legacy_version_rejected():
+    db = MagicMock()
+    student_id = "44444444-4444-4444-4444-444444444444"
+    vec = _make_unit_vector(192)
+
+    mock_profile = MagicMock()
+    mock_profile.embedding = vec
+    mock_profile.enrollment_version = 2  # Legacy version < 3
+
+    with patch("app.repositories.face_data_repository.get_active_embedding", return_value=mock_profile):
+        result = verify_face(db, student_id, vec)
+        assert result["is_match"] is False
+        assert result["requires_re_registration"] is True
+        assert "Legacy biometric profile" in result["message"]
+
+
+def test_verify_face_depth_anti_spoof_gate():
+    db = MagicMock()
+    student_id = "55555555-5555-5555-5555-555555555555"
+    vec = _make_unit_vector(192)
+
+    mock_profile = MagicMock()
+    mock_profile.embedding = vec
+    mock_profile.enrollment_version = 3
+    mock_profile.pose_embeddings = None
+    # Stored depth is all zeros
+    mock_profile.depth_features = [0.0] * 48
+
+    # Live depth is completely divergent (spoof topology)
+    live_depth = [10.0] * 48
+
+    with patch("app.repositories.face_data_repository.get_active_embedding", return_value=mock_profile):
+        result = verify_face(db, student_id, vec, live_depth_features=live_depth)
+        assert result["is_match"] is False
+        assert "topology verification failed" in result["message"]
+
