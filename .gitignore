@@ -8,3 +8,7 @@ dist/
 *.egg-info/
 .eggs/
 .pytest_cache/
+
+AGENTS.md
+agents.md
+.agents/

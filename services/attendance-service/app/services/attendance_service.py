@@ -3,12 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from uuid import UUID, uuid4
 from typing import Optional
+import math
+import os
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from shared_core.models.enums import AttemptStatus, AttendanceStatus
 from shared_core.schemas.events import FaceVerificationTask
 from shared_core.models.identity import Student
-from app.clients import scheduling_client
+from shared_core.models.vision import FaceProfile
+from shared_core.models.attendance import AttendanceRecord
+from app.clients import scheduling_client, ai_vision_client
 from app.repositories import attendance_repository
 from app.utils.geofence import geofence_check
 from app.rabbitmq.publisher import publish_verification_task
@@ -169,3 +173,136 @@ def override_record(db: Session, record_id: UUID, user_id: UUID, override_data: 
         audit(db, user_id, "attendance.override", "attendance_record", record.id, new_data={"status": record.status.value, "reason": record.override_reason})
         db.commit()
     return record
+
+
+def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
+    """
+    Synchronously verifies a student's live face embedding against their
+    registered profile in the database, records attendance if matched and session exists,
+    and logs verification attempts.
+    """
+    now = datetime.now(timezone.utc)
+    attempt_id = uuid4()
+
+    # 1. Fetch active face profile from database
+    profile = db.query(FaceProfile).filter(
+        FaceProfile.student_id == student_id,
+        FaceProfile.is_active.is_(True)
+    ).first()
+
+    if not profile:
+        return {
+            "success": False,
+            "is_match": False,
+            "confidence": 0.0,
+            "threshold": 0.70,
+            "message": "No active face biometric profile registered for student. Please complete face registration first.",
+        }
+
+    # 2. Perform biometric matching (via AI Vision microservice or direct vector similarity)
+    threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", "0.70"))
+    match_result = None
+    try:
+        match_result = ai_vision_client.verify_face(str(student_id), payload.face_embedding)
+    except Exception:
+        # Fallback to direct in-memory cosine similarity against stored DB profile
+        pass
+
+    if match_result and "is_match" in match_result:
+        is_match = bool(match_result.get("is_match"))
+        confidence = float(match_result.get("confidence", 0.0))
+    else:
+        # Direct DB computation using stored vector(192)
+        norm_ref = math.sqrt(sum(float(x) * float(x) for x in profile.embedding))
+        norm_live = math.sqrt(sum(float(x) * float(x) for x in payload.face_embedding))
+        if norm_ref == 0.0 or norm_live == 0.0:
+            confidence = 0.0
+        else:
+            dot_prod = sum(float(a) * float(b) for a, b in zip(profile.embedding, payload.face_embedding))
+            centroid_sim = float(dot_prod / (norm_ref * norm_live))
+            confidence = max(-1.0, min(1.0, centroid_sim))
+
+            stored_poses = getattr(profile, "pose_embeddings", None)
+            if isinstance(stored_poses, list) and len(stored_poses) > 0:
+                sims = []
+                for p in stored_poses:
+                    if isinstance(p, list) and len(p) == 192:
+                        p_norm = math.sqrt(sum(float(x) * float(x) for x in p))
+                        if p_norm > 0:
+                            p_dot = sum(float(a) * float(b) for a, b in zip(p, payload.face_embedding))
+                            s = float(p_dot / (p_norm * norm_live))
+                            sims.append(max(-1.0, min(1.0, s)))
+                if sims:
+                    confidence = 0.6 * confidence + 0.4 * max(sims)
+        is_match = confidence >= threshold
+
+    # 3. Handle session attendance recording and verification attempts
+    session_id_str = str(payload.lecture_session_id) if payload.lecture_session_id else ""
+    is_test_class = (session_id_str == "TEST_MOCK_CLASS")
+
+    window_id = None
+    session = None
+    if not is_test_class and session_id_str:
+        try:
+            session_uuid = UUID(session_id_str)
+            session = attendance_repository.get_session(db, session_uuid)
+            if session:
+                window = attendance_repository.get_open_window(db, session.id, "check_in")
+                if not window:
+                    window = attendance_repository.get_open_window(db, session.id, "random_check")
+                if window:
+                    window_id = window.id
+        except Exception:
+            pass
+
+    # Log verification attempt in database if window exists
+    if window_id:
+        attendance_repository.log_attempt(db, {
+            "id": attempt_id,
+            "verification_window_id": window_id,
+            "student_id": student_id,
+            "attempt_number": 1,
+            "used_face_verification": True,
+            "used_location_check": bool(payload.latitude and payload.longitude),
+            "latitude": payload.latitude,
+            "longitude": payload.longitude,
+            "face_match_confidence": confidence,
+            "status": AttemptStatus.success if is_match else AttemptStatus.failed,
+            "failure_reason": None if is_match else "Face mismatch",
+            "attempted_at": now,
+        })
+
+    # 4. If match and real lecture session, record attendance
+    if is_match and session:
+        record = attendance_repository.get_attendance_record(db, session.id, student_id)
+        if not record:
+            record = AttendanceRecord(
+                id=uuid4(),
+                lecture_session_id=session.id,
+                student_id=student_id,
+            )
+            db.add(record)
+        record.first_check_in_at = now
+        late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
+        status_val = AttendanceStatus.late if now > session.scheduled_at + timedelta(minutes=late_threshold) else AttendanceStatus.present
+        record.status = status_val
+        db.commit()
+
+    if not is_match:
+        return {
+            "success": False,
+            "is_match": False,
+            "confidence": round(confidence, 4),
+            "threshold": threshold,
+            "message": f"Face verification failed: Biometric mismatch with registered profile ({round(confidence * 100, 1)}% similarity, requires {int(threshold * 100)}%).",
+        }
+
+    return {
+        "success": True,
+        "is_match": True,
+        "confidence": round(confidence, 4),
+        "threshold": threshold,
+        "attempt_id": str(attempt_id),
+        "message": "Face verified successfully against database profile. Attendance recorded.",
+    }
+
