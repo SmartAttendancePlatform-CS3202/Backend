@@ -202,16 +202,56 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
     # 2. Perform biometric matching (via AI Vision microservice or direct vector similarity)
     threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", "0.70"))
     match_result = None
+    live_depth = getattr(payload, "depth_features", None)
     try:
-        match_result = ai_vision_client.verify_face(str(student_id), payload.face_embedding)
+        match_result = ai_vision_client.verify_face(
+            str(student_id),
+            payload.face_embedding,
+            depth_features=live_depth,
+        )
     except Exception:
         # Fallback to direct in-memory cosine similarity against stored DB profile
         pass
 
-    if match_result and "is_match" in match_result:
+    if match_result and ("is_match" in match_result or "requires_re_registration" in match_result):
+        if match_result.get("requires_re_registration"):
+            return {
+                "success": False,
+                "is_match": False,
+                "confidence": 0.0,
+                "threshold": threshold,
+                "requires_re_registration": True,
+                "message": match_result.get(
+                    "message",
+                    "Face profile was enrolled with an outdated model version. Please re-register your face profile.",
+                ),
+            }
         is_match = bool(match_result.get("is_match"))
         confidence = float(match_result.get("confidence", 0.0))
     else:
+        # Check enrollment version on fallback
+        enrollment_version_raw = getattr(profile, "enrollment_version", 3)
+        try:
+            if isinstance(enrollment_version_raw, (int, float, str)):
+                enrollment_version = int(enrollment_version_raw)
+            else:
+                enrollment_version = 3
+        except (ValueError, TypeError):
+            enrollment_version = 3
+
+        if enrollment_version < 3:
+            return {
+                "success": False,
+                "is_match": False,
+                "confidence": 0.0,
+                "threshold": threshold,
+                "requires_re_registration": True,
+                "message": (
+                    "Face profile was enrolled with an outdated model version. "
+                    "Please re-register your face profile in settings."
+                ),
+            }
+
         # Direct DB computation using stored vector(192)
         norm_ref = math.sqrt(sum(float(x) * float(x) for x in profile.embedding))
         norm_live = math.sqrt(sum(float(x) * float(x) for x in payload.face_embedding))
@@ -220,9 +260,10 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         else:
             dot_prod = sum(float(a) * float(b) for a, b in zip(profile.embedding, payload.face_embedding))
             centroid_sim = float(dot_prod / (norm_ref * norm_live))
-            confidence = max(-1.0, min(1.0, centroid_sim))
+            centroid_sim = max(-1.0, min(1.0, centroid_sim))
 
             stored_poses = getattr(profile, "pose_embeddings", None)
+            best_pose_sim = None
             if isinstance(stored_poses, list) and len(stored_poses) > 0:
                 sims = []
                 for p in stored_poses:
@@ -233,7 +274,31 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
                             s = float(p_dot / (p_norm * norm_live))
                             sims.append(max(-1.0, min(1.0, s)))
                 if sims:
-                    confidence = 0.6 * confidence + 0.4 * max(sims)
+                    best_pose_sim = max(sims)
+
+            if best_pose_sim is not None:
+                confidence = max(centroid_sim, best_pose_sim)
+            else:
+                confidence = centroid_sim
+
+        # Anti-spoof topological gate: depth feature similarity if available
+        stored_depth = getattr(profile, "depth_features", None)
+        if live_depth is not None and stored_depth is not None:
+            if isinstance(stored_depth, list) and len(stored_depth) == len(live_depth):
+                norm_d_ref = math.sqrt(sum(float(x) * float(x) for x in stored_depth))
+                norm_d_live = math.sqrt(sum(float(x) * float(x) for x in live_depth))
+                if norm_d_ref > 0 and norm_d_live > 0:
+                    d_dot = sum(float(a) * float(b) for a, b in zip(stored_depth, live_depth))
+                    depth_sim = max(-1.0, min(1.0, float(d_dot / (norm_d_ref * norm_d_live))))
+                    if depth_sim < 0.40:
+                        return {
+                            "success": False,
+                            "is_match": False,
+                            "confidence": round(confidence, 4),
+                            "threshold": threshold,
+                            "message": "Face verification failed: Liveness and surface topology check failed (possible spoof).",
+                        }
+
         is_match = confidence >= threshold
 
     # 3. Handle session attendance recording and verification attempts

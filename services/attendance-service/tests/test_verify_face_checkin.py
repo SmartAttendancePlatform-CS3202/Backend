@@ -134,3 +134,54 @@ def test_router_active_windows_test_mock_class(client):
     data = res.json()
     assert data["check_in_window"] is not None
     assert data["check_in_window"]["is_active"] is True
+
+
+def test_verify_face_legacy_enrollment_version_rejected():
+    db = MagicMock()
+    student_id = uuid4()
+
+    mock_profile = MagicMock(spec=FaceProfile)
+    mock_profile.embedding = [0.05] * 192
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = None
+    mock_profile.enrollment_version = 2  # Legacy version < 3
+
+    db.query.return_value.filter.return_value.first.return_value = mock_profile
+
+    payload = VerifyFaceRequest(
+        lecture_session_id="TEST_MOCK_CLASS",
+        face_embedding=[0.05] * 192,
+    )
+
+    with patch("app.services.attendance_service.ai_vision_client.verify_face", side_effect=Exception("Service offline")):
+        res = verify_face_and_record_attendance(db, student_id, payload)
+        assert res["success"] is False
+        assert res["is_match"] is False
+        assert res["requires_re_registration"] is True
+        assert "outdated model version" in res["message"]
+
+
+def test_verify_face_spoofed_depth_rejected():
+    db = MagicMock()
+    student_id = uuid4()
+
+    mock_profile = MagicMock(spec=FaceProfile)
+    mock_profile.embedding = [0.05] * 192
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = [1.0] * 24 + [0.0] * 24
+    mock_profile.enrollment_version = 3
+
+    db.query.return_value.filter.return_value.first.return_value = mock_profile
+
+    payload = VerifyFaceRequest(
+        lecture_session_id="TEST_MOCK_CLASS",
+        face_embedding=[0.05] * 192,
+        depth_features=[0.0] * 24 + [1.0] * 24,  # Orthogonal depth (spoof attempt)
+    )
+
+    with patch("app.services.attendance_service.ai_vision_client.verify_face", side_effect=Exception("Service offline")):
+        res = verify_face_and_record_attendance(db, student_id, payload)
+        assert res["success"] is False
+        assert res["is_match"] is False
+        assert "surface topology check failed" in res["message"]
+
