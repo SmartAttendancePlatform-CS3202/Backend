@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
+from typing import List
 from shared_core.db.session import get_db
 from shared_core.auth.rbac import require_role
 from shared_core.schemas.enrollment import EnrollmentCreate, EnrollmentOut
@@ -12,6 +13,10 @@ router=APIRouter(prefix="/enrollments",tags=["enrollments"])
 @router.post("",response_model=EnrollmentOut,status_code=201)
 def create(data:EnrollmentCreate,current_user:User=Depends(require_role("admin","lecturer")),db:Session=Depends(get_db)):
     return enrollment_service.create_enrollment(db,data.student_id,data.course_offering_id,current_user.id)
+
+@router.get("/offering/{offering_id}",response_model=List[EnrollmentOut])
+def get_for_offering(offering_id:UUID,current_user:User=Depends(require_role("admin","lecturer")),db:Session=Depends(get_db)):
+    return enrollment_service.get_for_offering(db,offering_id)
 
 @router.get("/{id}",response_model=EnrollmentOut)
 def get(id:UUID,current_user:User=Depends(require_role("admin","lecturer")),db:Session=Depends(get_db)):

@@ -52,6 +52,14 @@ def override(id: UUID, data: AttendanceOverrideRequest = Body(...), current_user
     if not data.override_reason: raise HTTPException(400, "override_reason is required")
     return attendance_service.override_record(db, id, current_user.id, data.model_dump(exclude_unset=True))
 
+@router.patch("/records/{id}/manual-mark", response_model=AttendanceRecordOut)
+def manual_mark(id: UUID, data: AttendanceOverrideRequest = Body(...), current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
+    obj = db.get(__import__('shared_core.models.attendance', fromlist=['AttendanceRecord']).AttendanceRecord, id)
+    if not obj: raise HTTPException(404, "Attendance record not found")
+    if getattr(current_user.role,'value',current_user.role) == 'lecturer' and obj.lecture_session.course_offering.lecturer_id != current_user.id: raise HTTPException(403, "Forbidden")
+    if not data.override_reason: raise HTTPException(400, "manual mark reason is required")
+    return attendance_service.override_record(db, id, current_user.id, data.model_dump(exclude_unset=True))
+
 @router.get("/records/{id}/attempts", response_model=List[AttemptOut])
 def attempts(id: UUID, current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
     return attendance_service.get_attendance_attempts(db, id)

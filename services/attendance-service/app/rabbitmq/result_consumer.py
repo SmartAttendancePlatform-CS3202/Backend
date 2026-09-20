@@ -15,6 +15,12 @@ _connection = None
 _task = None
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _finalize_result(db: Session, result: FaceVerificationResult) -> None:
     existing = db.query(AttendanceVerificationAttempt).filter(AttendanceVerificationAttempt.id == result.attempt_id).first()
     if existing:
@@ -57,7 +63,7 @@ def _finalize_result(db: Session, result: FaceVerificationResult) -> None:
             record.first_check_in_at = now
             session = window.lecture_session
             late_threshold = int(session.course_offering.late_threshold_minutes or 10)
-            status = AttendanceStatus.late if now > session.scheduled_at + timedelta(minutes=late_threshold) else AttendanceStatus.present
+            status = AttendanceStatus.late if now > _as_utc(session.scheduled_at) + timedelta(minutes=late_threshold) else AttendanceStatus.present
             record.status = status
         else:
             record.status = AttendanceStatus.absent

@@ -3,11 +3,24 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
-import random
 from sqlalchemy import cast, String, func
 from sqlalchemy.orm import Session
 from shared_core.models.attendance import LectureSession, VerificationWindow, AttendanceRecord, AttendanceVerificationAttempt
 from shared_core.models.enums import SessionStatus, WindowType, AttendanceStatus, AttemptStatus
+
+
+def ensure_session_roster(db: Session, session: LectureSession) -> int:
+    existing = {r.student_id for r in session.attendance_records}
+    added = 0
+    if session.course_offering and session.course_offering.enrollments:
+        for enrollment in session.course_offering.enrollments:
+            if enrollment.is_active and enrollment.student_id not in existing:
+                db.add(AttendanceRecord(lecture_session_id=session.id, student_id=enrollment.student_id, status=AttendanceStatus.absent))
+                added += 1
+        if added:
+            db.commit()
+            db.refresh(session)
+    return added
 
 
 def create_session(db: Session, data: dict) -> LectureSession:
@@ -15,11 +28,35 @@ def create_session(db: Session, data: dict) -> LectureSession:
         maximum = db.query(func.max(LectureSession.session_number)).filter(LectureSession.course_offering_id == data["course_offering_id"]).scalar()
         data["session_number"] = (maximum or 0) + 1
     obj = LectureSession(**data, status=SessionStatus.ongoing, held_at=datetime.now(timezone.utc))
-    db.add(obj); db.commit(); db.refresh(obj); return obj
+    db.add(obj); db.commit(); db.refresh(obj)
+    ensure_session_roster(db, obj)
+    return obj
+
+
+def create_scheduled_session(db: Session, data: dict, status: SessionStatus) -> LectureSession:
+    if not data.get("session_number"):
+        maximum = db.query(func.max(LectureSession.session_number)).filter(LectureSession.course_offering_id == data["course_offering_id"]).scalar()
+        data["session_number"] = (maximum or 0) + 1
+    held_at = datetime.now(timezone.utc) if status == SessionStatus.ongoing else None
+    obj = LectureSession(**data, status=status, held_at=held_at)
+    db.add(obj); db.commit(); db.refresh(obj)
+    ensure_session_roster(db, obj)
+    return obj
 
 
 def get_session(db: Session, session_id: UUID):
     return db.query(LectureSession).filter(LectureSession.id == session_id).first()
+
+
+def get_session_for_occurrence(db: Session, offering_id: UUID, scheduled_at: datetime):
+    return (
+        db.query(LectureSession)
+        .filter(
+            LectureSession.course_offering_id == offering_id,
+            LectureSession.scheduled_at == scheduled_at,
+        )
+        .first()
+    )
 
 
 def get_sessions(db: Session, offering_id=None, skip=0, limit=100, status=None):
@@ -34,14 +71,30 @@ def _window_type(value):
     return value.value if hasattr(value, "value") else str(value)
 
 
-def schedule_check_in_window(db: Session, session: LectureSession, duration_mins: int = 15):
+def schedule_check_in_window(db: Session, session: LectureSession, duration_mins: int = 15, open_at: datetime | None = None, close_at: datetime | None = None):
     now = datetime.now(timezone.utc)
+    open_at = open_at or now
+    close_at = close_at or now + timedelta(minutes=duration_mins)
+    existing = (
+        db.query(VerificationWindow)
+        .filter(
+            VerificationWindow.lecture_session_id == session.id,
+            cast(VerificationWindow.window_type, String) == WindowType.check_in.value,
+        )
+        .first()
+    )
+    if existing:
+        existing.scheduled_open_at = open_at
+        existing.scheduled_close_at = close_at
+        existing.actual_opened_at = existing.actual_opened_at or open_at
+        existing.is_active = True
+        db.commit(); db.refresh(existing); return existing
     obj = VerificationWindow(
         lecture_session_id=session.id,
         window_type=WindowType.check_in,
-        scheduled_open_at=now,
-        scheduled_close_at=now + timedelta(minutes=duration_mins),
-        actual_opened_at=now,
+        scheduled_open_at=open_at,
+        scheduled_close_at=close_at,
+        actual_opened_at=open_at,
         is_active=True,
     )
     db.add(obj); db.commit(); db.refresh(obj); return obj
@@ -49,6 +102,9 @@ def schedule_check_in_window(db: Session, session: LectureSession, duration_mins
 
 def schedule_random_window(db: Session, session: LectureSession, window_minutes: int):
     now = datetime.now(timezone.utc)
+    existing_active = get_open_window(db, session.id, WindowType.random_check.value)
+    if existing_active:
+        return existing_active
     obj = VerificationWindow(
         lecture_session_id=session.id,
         window_type=WindowType.random_check,
@@ -71,11 +127,12 @@ def close_session(db: Session, session_id: UUID):
             window.actual_closed_at = now
     enrolled = {e.student_id for e in session.course_offering.enrollments if e.is_active}
     existing = {r.student_id: r for r in session.attendance_records}
+    random_required = any(_window_type(window.window_type) == WindowType.random_check.value for window in session.verification_windows)
     for student_id in enrolled:
         record = existing.get(student_id)
         if record is None:
             db.add(AttendanceRecord(lecture_session_id=session.id, student_id=student_id, status=AttendanceStatus.absent))
-        elif record.first_check_in_at and record.random_check_completed_at is None and not record.is_manually_overridden:
+        elif random_required and record.first_check_in_at and record.random_check_completed_at is None and not record.is_manually_overridden:
             record.status = AttendanceStatus.flagged_proxy
             record.flag_reason = record.flag_reason or "Random verification not completed"
     db.commit(); db.refresh(session); return session
