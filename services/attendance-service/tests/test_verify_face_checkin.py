@@ -74,6 +74,8 @@ def test_verify_face_matching_success():
 
     payload = VerifyFaceRequest(
         lecture_session_id="TEST_MOCK_CLASS",
+        latitude=6.7951,
+        longitude=79.9009,
         face_embedding=[0.05] * 192,
     )
 
@@ -99,6 +101,8 @@ def test_verify_face_mismatch_failure():
     # Live face has opposite coordinates
     payload = VerifyFaceRequest(
         lecture_session_id="TEST_MOCK_CLASS",
+        latitude=6.7951,
+        longitude=79.9009,
         face_embedding=[0.0] * 96 + [1.0] * 96,
     )
 
@@ -109,10 +113,91 @@ def test_verify_face_mismatch_failure():
     assert "Face verification failed: Biometric mismatch" in res["message"]
 
 
+def test_verify_face_outside_geofence_rejected():
+    db = MagicMock()
+    student_id = uuid4()
+
+    # Face is an exact match!
+    mock_profile = MagicMock(spec=FaceProfile)
+    mock_profile.embedding = [0.05] * 192
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = None
+
+    db.query.return_value.filter.return_value.first.return_value = mock_profile
+
+    # Student attempts check-in ~2.7 km away from Moratuwa Seminar Room
+    payload = VerifyFaceRequest(
+        lecture_session_id="TEST_MOCK_CLASS",
+        latitude=6.8200,
+        longitude=79.9009,
+        face_embedding=[0.05] * 192,
+    )
+
+    res = verify_face_and_record_attendance(db, student_id, payload)
+    assert res["success"] is False
+    assert res["is_match"] is True  # Biometrics matched
+    assert "Location verification failed: Outside 30m geofence" in res["message"]
+    # Verify no AttendanceRecord was added to the database
+    db.add.assert_not_called()
+
+
+def test_verify_face_missing_gps_rejected():
+    db = MagicMock()
+    student_id = uuid4()
+
+    mock_profile = MagicMock(spec=FaceProfile)
+    mock_profile.embedding = [0.05] * 192
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = None
+
+    db.query.return_value.filter.return_value.first.return_value = mock_profile
+
+    payload = VerifyFaceRequest(
+        lecture_session_id="TEST_MOCK_CLASS",
+        latitude=None,
+        longitude=None,
+        face_embedding=[0.05] * 192,
+    )
+
+    res = verify_face_and_record_attendance(db, student_id, payload)
+    assert res["success"] is False
+    assert "Location verification failed: Missing GPS coordinates" in res["message"]
+    db.add.assert_not_called()
+
+
+def test_router_verify_location_endpoint(client):
+    test_client, student_id = client
+
+    # 1. Within 30m of mock venue
+    res_inside = test_client.post("/checkin/verify-location", json={
+        "lecture_session_id": "TEST_MOCK_CLASS",
+        "latitude": 6.7951,
+        "longitude": 79.9009,
+    })
+    assert res_inside.status_code == 200
+    data_inside = res_inside.json()
+    assert data_inside["inside"] is True
+    assert data_inside["distance_meters"] <= 30.0
+
+    # 2. Outside 30m
+    res_outside = test_client.post("/checkin/verify-location", json={
+        "lecture_session_id": "TEST_MOCK_CLASS",
+        "latitude": 6.8200,
+        "longitude": 79.9009,
+    })
+    assert res_outside.status_code == 200
+    data_outside = res_outside.json()
+    assert data_outside["inside"] is False
+    assert data_outside["distance_meters"] > 30.0
+
+
 def test_router_verify_face_endpoint(client):
     test_client, student_id = client
     payload = {
         "lecture_session_id": "TEST_MOCK_CLASS",
+        "latitude": 6.7951,
+        "longitude": 79.9009,
+
         "face_embedding": [0.05] * 192,
     }
 
@@ -150,6 +235,8 @@ def test_verify_face_legacy_enrollment_version_rejected():
 
     payload = VerifyFaceRequest(
         lecture_session_id="TEST_MOCK_CLASS",
+        latitude=6.7951,
+        longitude=79.9009,
         face_embedding=[0.05] * 192,
     )
 
@@ -175,6 +262,8 @@ def test_verify_face_spoofed_depth_rejected():
 
     payload = VerifyFaceRequest(
         lecture_session_id="TEST_MOCK_CLASS",
+        latitude=6.7951,
+        longitude=79.9009,
         face_embedding=[0.05] * 192,
         depth_features=[0.0] * 24 + [1.0] * 24,  # Orthogonal depth (spoof attempt)
     )
