@@ -343,7 +343,12 @@ def record_random_check(db: Session, student_id: UUID, payload):
 
 def get_student_attendance(db, student_id): return attendance_repository.get_attendance_records(db, student_id=student_id)
 
-def get_records(db, session_id=None, student_id=None): return attendance_repository.get_attendance_records(db, session_id=session_id, student_id=student_id)
+def get_records(db, session_id=None, student_id=None):
+    if session_id:
+        session = attendance_repository.get_session(db, session_id)
+        if session:
+            attendance_repository.ensure_session_roster(db, session)
+    return attendance_repository.get_attendance_records(db, session_id=session_id, student_id=student_id)
 def get_attendance_attempts(db, record_id): return attendance_repository.get_attempts_for_record(db, record_id)
 def get_recent_attempts(db, offering_id=None): return attendance_repository.get_recent_attempts(db, offering_id)
 
@@ -354,7 +359,6 @@ def get_session(db, session_id):
     if session:
         _sync_session_state(db, session)
         _ensure_check_in_window(db, session)
-        attendance_repository.ensure_session_roster(db, session)
     return session
 
 

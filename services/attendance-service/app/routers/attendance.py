@@ -9,7 +9,7 @@ from shared_core.models.identity import User
 from shared_core.schemas.session import AttendanceRecordOut, AttemptOut, AttendanceOverrideRequest
 from app.services import attendance_service
 
-router = APIRouter(prefix="/attendance", tags=["attendance"])
+router = APIRouter(tags=["attendance"])
 
 @router.get("/records", response_model=List[AttendanceRecordOut])
 def records(session_id: Optional[UUID] = Query(None), student_id: Optional[UUID] = Query(None), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

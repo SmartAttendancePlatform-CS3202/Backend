@@ -9,6 +9,8 @@ from shared_core.models.attendance import LectureSession, VerificationWindow, At
 from shared_core.models.enums import SessionStatus, WindowType, AttendanceStatus, AttemptStatus
 
 
+from sqlalchemy.exc import IntegrityError
+
 def ensure_session_roster(db: Session, session: LectureSession) -> int:
     existing = {r.student_id for r in session.attendance_records}
     added = 0
@@ -18,8 +20,13 @@ def ensure_session_roster(db: Session, session: LectureSession) -> int:
                 db.add(AttendanceRecord(lecture_session_id=session.id, student_id=enrollment.student_id, status=AttendanceStatus.absent))
                 added += 1
         if added:
-            db.commit()
-            db.refresh(session)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                added = 0
+            finally:
+                db.refresh(session)
     return added
 
 
