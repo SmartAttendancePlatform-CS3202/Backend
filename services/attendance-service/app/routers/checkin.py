@@ -37,6 +37,12 @@ class RandomCheckRequest(BaseModel):
     )
 
 
+class VerifyLocationRequest(BaseModel):
+    lecture_session_id: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
 class VerifyFaceRequest(BaseModel):
     lecture_session_id: Optional[str] = None
     verification_window_id: Optional[str] = None
@@ -49,6 +55,15 @@ class VerifyFaceRequest(BaseModel):
         description="192-dimensional MobileFaceNet embedding vector",
     )
     depth_features: Optional[List[float]] = None
+
+
+@router.post("/verify-location", status_code=status.HTTP_200_OK)
+def verify_location(
+    payload: VerifyLocationRequest,
+    current_user: User = Depends(require_role("student")),
+    db: Session = Depends(get_db),
+):
+    return attendance_service.verify_location_precheck(db, current_user.id, payload)
 
 
 @router.post("/verify-face", status_code=status.HTTP_200_OK)
@@ -96,10 +111,18 @@ def active_windows(
             },
             "random_check_active": False,
             "random_check_window": None,
+            "venue_geofence": {
+                "venue_name": "Seminar Room (Mock)",
+                "building": "CSE Department, UoM",
+                "latitude": 6.7951,
+                "longitude": 79.9009,
+                "radius_meters": 30,
+            },
         }
     try:
         session_uuid = UUID(lecture_session_id)
     except ValueError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid lecture session ID format")
     return attendance_service.get_active_windows(db, session_uuid, current_user.id)
+
 

@@ -14,7 +14,7 @@ from shared_core.models.vision import FaceProfile
 from shared_core.models.attendance import AttendanceRecord
 from app.clients import scheduling_client, ai_vision_client
 from app.repositories import attendance_repository
-from app.utils.geofence import geofence_check
+from app.utils.geofence import geofence_check, calculate_distance
 from app.rabbitmq.publisher import publish_verification_task
 from shared_core.audit import audit
 
@@ -77,12 +77,97 @@ def _window_payload(window, include_identity: bool = True):
 def get_active_windows(db: Session, lecture_session_id: UUID, student_id: UUID | None = None):
     check = attendance_repository.get_open_window(db, lecture_session_id, "check_in")
     random_window = attendance_repository.get_open_window(db, lecture_session_id, "random_check")
+    session = attendance_repository.get_session(db, lecture_session_id)
+    venue_geofence = None
+    if session:
+        venue_id = session.venue_id or (session.course_offering.venue_id if session.course_offering else None)
+        if venue_id:
+            try:
+                venue = scheduling_client.get_venue(venue_id)
+                boundary = venue.get("boundary_data", {})
+                lat = boundary.get("latitude") or (boundary.get("center", {}).get("lat") if isinstance(boundary.get("center"), dict) else None)
+                lng = boundary.get("longitude") or (boundary.get("center", {}).get("lng") if isinstance(boundary.get("center"), dict) else None)
+                rad = boundary.get("radius_meters") or boundary.get("radius_m") or 30
+                venue_geofence = {
+                    "venue_name": venue.get("name", "Lecture Hall"),
+                    "building": venue.get("building"),
+                    "latitude": float(lat) if lat is not None else 6.7951,
+                    "longitude": float(lng) if lng is not None else 79.9009,
+                    "radius_meters": int(rad),
+                }
+            except Exception:
+                pass
+
     return {
         "check_in_window": _window_payload(check),
         "random_check_active": bool(random_window),
         # The exact random window identifier is only exposed while the window is open.
         "random_check_window": _window_payload(random_window) if random_window and student_id else None,
+        "venue_geofence": venue_geofence,
     }
+
+
+def verify_location_precheck(db: Session, student_id: UUID, payload):
+    now = datetime.now(timezone.utc)
+    session_id_str = str(payload.lecture_session_id)
+    is_test_class = (session_id_str == "TEST_MOCK_CLASS")
+
+    if is_test_class:
+        dist = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
+        inside = dist <= 30.0
+        return {
+            "success": True,
+            "inside": inside,
+            "distance_meters": round(dist, 2),
+            "radius_meters": 30,
+            "venue_name": "Seminar Room (Mock)",
+            "message": "Within 30m geofence" if inside else f"Outside 30m geofence ({round(dist)}m away, must be <= 30m)",
+        }
+
+    try:
+        session_uuid = UUID(session_id_str)
+    except ValueError:
+        raise HTTPException(400, "Invalid lecture session ID format")
+
+    session = attendance_repository.get_session(db, session_uuid)
+    if not session:
+        raise HTTPException(404, "Lecture session not found")
+
+    geo, venue = _venue_check(session, payload.latitude, payload.longitude)
+    inside = bool(geo.get("inside"))
+    dist = geo.get("distance_meters")
+    radius = 30.0
+    if venue and isinstance(venue.get("boundary_data"), dict):
+        radius = float(venue["boundary_data"].get("radius_meters", venue["boundary_data"].get("radius_m", 30.0)))
+
+    if not inside:
+        window = attendance_repository.get_open_window(db, session.id, "check_in")
+        if window:
+            attendance_repository.log_attempt(db, {
+                "id": uuid4(),
+                "verification_window_id": window.id,
+                "student_id": student_id,
+                "attempt_number": 1,
+                "used_face_verification": False,
+                "used_location_check": True,
+                "location_method": "gps_geofence",
+                "latitude": payload.latitude,
+                "longitude": payload.longitude,
+                "distance_from_venue_meters": dist,
+                "status": AttemptStatus.failed,
+                "failure_reason": "Outside geofence",
+                "attempted_at": now,
+            })
+
+    return {
+        "success": True,
+        "inside": inside,
+        "distance_meters": round(dist, 2) if dist is not None else None,
+        "radius_meters": radius,
+        "venue_name": venue.get("name", "Lecture Hall"),
+        "message": "Within geofence" if inside else f"Outside geofence ({round(dist or 0)}m away, must be <= {round(radius)}m)",
+    }
+
 
 
 
@@ -320,6 +405,44 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         except Exception:
             pass
 
+    # Geofence enforcement
+    geo_inside = True
+    distance_m = None
+    geo_failure_reason = None
+
+    if is_test_class:
+        if payload.latitude is None or payload.longitude is None:
+            geo_inside = False
+            geo_failure_reason = "Missing GPS coordinates"
+        else:
+            distance_m = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
+            geo_inside = (distance_m <= 30.0)
+            if not geo_inside:
+                geo_failure_reason = f"Outside 30m geofence ({round(distance_m)}m away, must be <= 30m)"
+    elif session:
+        if payload.latitude is None or payload.longitude is None:
+            geo_inside = False
+            geo_failure_reason = "Missing GPS coordinates"
+        else:
+            try:
+                geo, venue = _venue_check(session, payload.latitude, payload.longitude)
+                geo_inside = bool(geo.get("inside"))
+                distance_m = geo.get("distance_meters")
+                if not geo_inside:
+                    geo_failure_reason = f"Outside geofence ({round(distance_m or 0)}m away)"
+            except Exception as exc:
+                geo_inside = False
+                geo_failure_reason = f"Venue geofence error: {exc}"
+
+    # Determine overall verification status
+    overall_success = is_match and geo_inside
+    attempt_status = AttemptStatus.success if overall_success else AttemptStatus.failed
+    attempt_failure = None
+    if not geo_inside:
+        attempt_failure = geo_failure_reason
+    elif not is_match:
+        attempt_failure = "Face mismatch"
+
     # Log verification attempt in database if window exists
     if window_id:
         attendance_repository.log_attempt(db, {
@@ -328,16 +451,29 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             "student_id": student_id,
             "attempt_number": 1,
             "used_face_verification": True,
-            "used_location_check": bool(payload.latitude and payload.longitude),
+            "used_location_check": bool(payload.latitude is not None and payload.longitude is not None),
             "latitude": payload.latitude,
             "longitude": payload.longitude,
+            "distance_from_venue_meters": distance_m,
             "face_match_confidence": confidence,
-            "status": AttemptStatus.success if is_match else AttemptStatus.failed,
-            "failure_reason": None if is_match else "Face mismatch",
+            "status": attempt_status,
+            "failure_reason": attempt_failure,
             "attempted_at": now,
         })
 
-    # 4. If match and real lecture session, record attendance
+    # Location check failed: Reject immediately and do NOT record attendance
+    if not geo_inside:
+        return {
+            "success": False,
+            "is_match": is_match,
+            "confidence": round(confidence, 4),
+            "threshold": threshold,
+            "attempt_id": str(attempt_id),
+            "distance_meters": round(distance_m, 2) if distance_m is not None else None,
+            "message": f"Location verification failed: {geo_failure_reason}. Attendance not recorded.",
+        }
+
+    # 4. If face match AND location inside geofence AND real lecture session, record attendance
     if is_match and session:
         record = attendance_repository.get_attendance_record(db, session.id, student_id)
         if not record:
@@ -368,6 +504,8 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         "confidence": round(confidence, 4),
         "threshold": threshold,
         "attempt_id": str(attempt_id),
-        "message": "Face verified successfully against database profile. Attendance recorded.",
+        "distance_meters": round(distance_m, 2) if distance_m is not None else None,
+        "message": "Face verified successfully within lecture hall geofence. Attendance recorded.",
     }
+
 
