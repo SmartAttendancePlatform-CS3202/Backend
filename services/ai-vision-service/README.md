@@ -1,47 +1,24 @@
 # ai-vision-service
 
-FastAPI service for face embedding extraction and matching —
+High-performance, lightweight vector matching microservice for face verification —
 PID 12 / Group 24's Smart Attendance and Classroom Access Platform.
 
-Owns: `face_profiles` from the shared schema (pgvector embeddings).
-Called internally by attendance-service; not exposed to the mobile
-app directly — the internal key check in `main.py` enforces that.
+## Architecture
 
-## Local setup
-
-```bash
-cp .env.example .env
-pip install ../../libs/shared-core
-pip install -e .
-uvicorn app.main:app --reload --port 8003
-```
-
-## Picking a face-matching library
-
-`app/services/embedding_service.py` is intentionally left as a stub —
-that's the one file whose implementation depends on which library you
-settle on:
-
-- **DeepFace** (`pip install deepface`) — easiest to start with,
-  wraps several models (ArcFace, Facenet512, etc.), decent accuracy
-  out of the box.
-- **face_recognition** (`pip install face_recognition`) — dlib-based,
-  128-d embeddings, lighter weight, needs `cmake`/`dlib` build tools.
-
-Whichever you pick, keep the embedding dimension in sync with the
-`vector(512)` column in `university_attendance_schema.sql` — 128-d
-models will need that column resized to `vector(128)`.
+- **Edge-First Embedding**: Mobile clients execute on-device liveness verification and extract 192-dimensional embeddings via MobileFaceNet (`react-native-fast-tflite`).
+- **No Server-Side Image Generation**: The backend performs zero neural network inference on raw images, eliminating heavy ML frameworks (DeepFace, OpenCV, TensorFlow).
+- **In-Memory Cosine Similarity**: Normalized dot products are computed in Python via NumPy with sub-millisecond latency.
+- **Data Ownership**: Exclusively owns `face_profiles` (`vector(192)` pgvector embeddings).
+- **Security**: Internal only. Endpoints require the `X-Internal-Key` header verified by shared RBAC.
 
 ## Endpoints
 
-- `GET /health` — no auth (used for container health checks)
-- `POST /verify` — internal only, called by attendance-service
-- `POST /register` — internal only, called during mobile onboarding
+- `GET /health` — Health check endpoint
+- `POST /internal/verify` — Internal 1:1 vector verification against active student profile
+- `POST /internal/register` — Internal registration of student's 192D reference embedding
 
-## Deploying
+## Asynchronous Worker (RabbitMQ)
 
-Same Docker-build-context-at-repo-root pattern as the other two
-services. Face-matching libraries can be heavy — if your Render/Railway
-free tier struggles with image size or cold-start time, that's the
-concrete case for this service living on its own deploy target
-separate from the other two.
+- Consumes `FaceVerificationTask` from `face_verification_queue` (containing 192D `face_embedding`).
+- Performs 1:1 matching against stored student profile.
+- Publishes `FaceVerificationResult` to `face_verification_results` queue for `attendance-service` to record.

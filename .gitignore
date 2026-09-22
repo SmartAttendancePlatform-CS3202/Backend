@@ -3,5 +3,12 @@ __pycache__/
 .env
 services/*/.env
 .venv/
+build/
+dist/
 *.egg-info/
+.eggs/
 .pytest_cache/
+
+AGENTS.md
+agents.md
+.agents/

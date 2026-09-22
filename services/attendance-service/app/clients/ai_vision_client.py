@@ -1,7 +1,7 @@
-"""Deprecated synchronous AI Vision client.
+"""Internal AI Vision HTTP client.
 
-Attendance verification uses RabbitMQ asynchronously. This client remains only for
-small internal diagnostics/tests and never receives user traffic.
+Used by attendance-service for onboarding registration and internal diagnostics.
+High-throughput verification at attendance check-in uses RabbitMQ asynchronously.
 """
 import os
 import time
@@ -17,19 +17,71 @@ AI_VISION_LATENCY_SECONDS = Histogram(
 )
 
 
-def verify_face(student_id: str, face_image_base64: str) -> dict:
-    base_url = os.environ.get("AI_VISION_SERVICE_URL", "http://ai-vision-service:8000")
+def _base_url() -> str:
+    return os.environ.get("AI_VISION_SERVICE_URL", "http://ai-vision-service:8000")
+
+
+def _headers() -> dict[str, str]:
+    return {"X-Internal-Key": get_settings().internal_api_key}
+
+
+def verify_face(
+    student_id: str,
+    face_embedding: list[float],
+    depth_features: list[float] | None = None,
+) -> dict:
     start = time.perf_counter()
     status_code = "500"
     try:
+        payload = {"student_id": student_id, "face_embedding": face_embedding}
+        if depth_features is not None:
+            payload["depth_features"] = depth_features
         response = httpx.post(
-            f"{base_url}/internal/verify",
-            json={"student_id": student_id, "face_image_base64": face_image_base64},
-            headers={"X-Internal-Key": get_settings().internal_api_key},
+            f"{_base_url()}/internal/verify",
+            json=payload,
+            headers=_headers(),
             timeout=10.0,
         )
         status_code = str(response.status_code)
         response.raise_for_status()
         return response.json()
     finally:
-        AI_VISION_LATENCY_SECONDS.labels(endpoint="verify", status_code=status_code).observe(time.perf_counter() - start)
+        AI_VISION_LATENCY_SECONDS.labels(
+            endpoint="verify", status_code=status_code
+        ).observe(time.perf_counter() - start)
+
+
+def register_face(
+    student_id: str,
+    face_embedding: list[float],
+    quality_score: float = 1.0,
+    pose_embeddings: list[list[float]] | None = None,
+    depth_features: list[float] | None = None,
+    enrollment_metadata: dict | None = None,
+) -> dict:
+    start = time.perf_counter()
+    status_code = "500"
+    payload = {
+        "student_id": student_id,
+        "face_embedding": face_embedding,
+        "quality_score": quality_score,
+        "pose_embeddings": pose_embeddings,
+        "depth_features": depth_features,
+        "enrollment_metadata": enrollment_metadata,
+    }
+    try:
+        response = httpx.post(
+            f"{_base_url()}/internal/register",
+            json=payload,
+            headers=_headers(),
+            timeout=15.0,
+        )
+        status_code = str(response.status_code)
+        response.raise_for_status()
+        return response.json()
+    finally:
+        AI_VISION_LATENCY_SECONDS.labels(
+            endpoint="register", status_code=status_code
+        ).observe(time.perf_counter() - start)
+
+
