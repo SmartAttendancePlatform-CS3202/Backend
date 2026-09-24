@@ -92,4 +92,7 @@ def test_onboarding_register_face_calls_ai_vision_client():
             student_id=str(student_user.id),
             face_embedding=req.face_embedding,
             quality_score=0.9,
+            pose_embeddings=None,
+            depth_features=None,
+            enrollment_metadata=None,
         )

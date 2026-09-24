@@ -25,13 +25,20 @@ def _headers() -> dict[str, str]:
     return {"X-Internal-Key": get_settings().internal_api_key}
 
 
-def verify_face(student_id: str, face_embedding: list[float]) -> dict:
+def verify_face(
+    student_id: str,
+    face_embedding: list[float],
+    depth_features: list[float] | None = None,
+) -> dict:
     start = time.perf_counter()
     status_code = "500"
     try:
+        payload = {"student_id": student_id, "face_embedding": face_embedding}
+        if depth_features is not None:
+            payload["depth_features"] = depth_features
         response = httpx.post(
             f"{_base_url()}/internal/verify",
-            json={"student_id": student_id, "face_embedding": face_embedding},
+            json=payload,
             headers=_headers(),
             timeout=10.0,
         )
@@ -48,19 +55,26 @@ def register_face(
     student_id: str,
     face_embedding: list[float],
     quality_score: float = 1.0,
+    pose_embeddings: list[list[float]] | None = None,
+    depth_features: list[float] | None = None,
+    enrollment_metadata: dict | None = None,
 ) -> dict:
     start = time.perf_counter()
     status_code = "500"
+    payload = {
+        "student_id": student_id,
+        "face_embedding": face_embedding,
+        "quality_score": quality_score,
+        "pose_embeddings": pose_embeddings,
+        "depth_features": depth_features,
+        "enrollment_metadata": enrollment_metadata,
+    }
     try:
         response = httpx.post(
             f"{_base_url()}/internal/register",
-            json={
-                "student_id": student_id,
-                "face_embedding": face_embedding,
-                "quality_score": quality_score,
-            },
+            json=payload,
             headers=_headers(),
-            timeout=10.0,
+            timeout=15.0,
         )
         status_code = str(response.status_code)
         response.raise_for_status()
@@ -69,4 +83,5 @@ def register_face(
         AI_VISION_LATENCY_SECONDS.labels(
             endpoint="register", status_code=status_code
         ).observe(time.perf_counter() - start)
+
 

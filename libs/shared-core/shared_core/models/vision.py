@@ -4,7 +4,8 @@ from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .identity import Student, User
-from sqlalchemy import Boolean, DateTime, func, ForeignKey, Text, text, Numeric, Index
+from sqlalchemy import Boolean, DateTime, func, ForeignKey, Text, text, Numeric, Integer, Index
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
@@ -17,6 +18,10 @@ class FaceProfile(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
     embedding: Mapped[Any] = mapped_column(Vector(192), nullable=False)
+    pose_embeddings: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    depth_features: Mapped[list[float] | None] = mapped_column(ARRAY(Numeric), nullable=True)
+    enrollment_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    enrollment_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("3"))
     reference_photo_url: Mapped[str] = mapped_column(Text, nullable=False)
     quality_score: Mapped[float | None] = mapped_column(Numeric)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))

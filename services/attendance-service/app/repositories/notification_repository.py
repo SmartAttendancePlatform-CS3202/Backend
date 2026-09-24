@@ -8,6 +8,8 @@ from shared_core.models.enums import UserRole
 
 def _visible(notice: Notice, user: User, db: Session) -> bool:
     role = getattr(user.role, "value", user.role)
+    if role == "admin" or notice.created_by == user.id:
+        return True
     if notice.target_user_ids and user.id in notice.target_user_ids:
         return True
     if notice.target_roles and UserRole(role) in notice.target_roles:
@@ -43,9 +45,9 @@ def get_notices(db: Session, user_id: UUID) -> List[dict]:
     notices = db.query(Notice).order_by(Notice.created_at.desc()).limit(200).all()
     return [_serialize(n, user_id, db) for n in notices if user and _visible(n, user, db) and (not n.expires_at or n.expires_at >= __import__('datetime').datetime.now(__import__('datetime').timezone.utc))]
 
-def get_all_notices(db: Session) -> List[dict]:
+def get_all_notices(db: Session, user_id: UUID | None = None) -> List[dict]:
     notices = db.query(Notice).order_by(Notice.created_at.desc()).limit(200).all()
-    return [_serialize(n, n.created_by, db) for n in notices]
+    return [_serialize(n, user_id or n.created_by, db) for n in notices]
 
 
 def create_notice(db: Session, data: dict, creator_id: UUID) -> dict:
