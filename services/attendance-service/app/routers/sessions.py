@@ -8,12 +8,17 @@ from shared_core.models.identity import User
 from shared_core.schemas.session import LectureSessionOut, SessionCreate
 from shared_core.db.session import get_db
 from app.services import attendance_service
+from app.repositories import attendance_repository
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 @router.get("", response_model=List[LectureSessionOut])
 def list_sessions(offering_id: Optional[UUID] = Query(None), status: Optional[str] = Query(None), skip: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return attendance_service.get_sessions(db, offering_id, skip, limit, status)
+
+@router.get("/active", response_model=List[LectureSessionOut])
+def active_sessions(offering_id: Optional[UUID] = Query(None), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return attendance_service.get_active_scheduled_sessions(db, current_user, offering_id)
 
 @router.post("", response_model=LectureSessionOut, status_code=201)
 def start_session(data: SessionCreate, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
@@ -38,7 +43,23 @@ def end_session(id: UUID, current_user: User = Depends(require_role("lecturer", 
 
 @router.get("/{id}/windows")
 def windows(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return attendance_service.get_active_windows(db, id, current_user.id if getattr(current_user.role,'value',current_user.role)=='student' else None)
+    if getattr(current_user.role,'value',current_user.role) == 'student':
+        return attendance_service.get_active_windows(db, id, current_user.id)
+    session = attendance_service.get_session(db, id)
+    if not session: raise HTTPException(404, "Session not found")
+    if getattr(current_user.role,'value',current_user.role) == 'lecturer' and session.course_offering.lecturer_id != current_user.id:
+        raise HTTPException(403, "Not assigned to this offering")
+    return attendance_service.get_session_windows(db, id)
+
+@router.post("/{id}/sync-roster")
+def sync_roster(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
+    session = attendance_service.get_session(db, id)
+    if not session: raise HTTPException(404, "Session not found")
+    if getattr(current_user.role, "value", current_user.role) == "lecturer" and session.course_offering.lecturer_id != current_user.id:
+        raise HTTPException(403, "Not assigned to this offering")
+    
+    added = attendance_repository.ensure_session_roster(db, session)
+    return {"message": f"Synced {added} missing students to roster"}
 
 @router.post("/{id}/windows/random")
 def trigger_random_window(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):

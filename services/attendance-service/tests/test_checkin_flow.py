@@ -38,14 +38,18 @@ def test_random_check_request_validation():
 
 
 @pytest.mark.anyio
-async def test_record_random_check_publishes_task_without_gps_check():
+async def test_record_random_check_success():
     db = MagicMock()
     student_id = uuid4()
     session_id = uuid4()
     window_id = uuid4()
 
+    from datetime import datetime, timezone
     mock_session = MagicMock()
     mock_session.id = session_id
+    mock_session.status = "ongoing"
+    mock_session.scheduled_at = datetime.now(timezone.utc)
+    mock_session.duration_mins = 60
     mock_window = MagicMock()
     mock_window.id = window_id
 
@@ -64,15 +68,12 @@ async def test_record_random_check_publishes_task_without_gps_check():
         "app.repositories.attendance_repository.get_open_window",
         return_value=mock_window,
     ), patch(
-        "app.services.attendance_service.publish_verification_task",
-        new_callable=AsyncMock,
-    ) as mock_pub:
+        "app.services.attendance_service._venue_check",
+        return_value=({"inside": True, "distance_m": 10.0}, 10.0),
+    ):
         res = await record_random_check(db, student_id, payload)
-        assert res["status"] == "processing"
-        mock_pub.assert_awaited_once()
-        task = mock_pub.call_args[0][0]
-        assert task.student_id == student_id
-        assert len(task.face_embedding) == 192
+        assert res["status"] == "success"
+        assert "attempt_id" in res
 
 
 def test_onboarding_register_face_calls_ai_vision_client():

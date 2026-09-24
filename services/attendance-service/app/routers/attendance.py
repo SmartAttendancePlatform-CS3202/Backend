@@ -9,7 +9,7 @@ from shared_core.models.identity import User
 from shared_core.schemas.session import AttendanceRecordOut, AttemptOut, AttendanceOverrideRequest
 from app.services import attendance_service
 
-router = APIRouter(prefix="/attendance", tags=["attendance"])
+router = APIRouter(tags=["attendance"])
 
 @router.get("/records", response_model=List[AttendanceRecordOut])
 def records(session_id: Optional[UUID] = Query(None), student_id: Optional[UUID] = Query(None), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -50,6 +50,14 @@ def override(id: UUID, data: AttendanceOverrideRequest = Body(...), current_user
     if not obj: raise HTTPException(404, "Attendance record not found")
     if getattr(current_user.role,'value',current_user.role) == 'lecturer' and obj.lecture_session.course_offering.lecturer_id != current_user.id: raise HTTPException(403, "Forbidden")
     if not data.override_reason: raise HTTPException(400, "override_reason is required")
+    return attendance_service.override_record(db, id, current_user.id, data.model_dump(exclude_unset=True))
+
+@router.patch("/records/{id}/manual-mark", response_model=AttendanceRecordOut)
+def manual_mark(id: UUID, data: AttendanceOverrideRequest = Body(...), current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
+    obj = db.get(__import__('shared_core.models.attendance', fromlist=['AttendanceRecord']).AttendanceRecord, id)
+    if not obj: raise HTTPException(404, "Attendance record not found")
+    if getattr(current_user.role,'value',current_user.role) == 'lecturer' and obj.lecture_session.course_offering.lecturer_id != current_user.id: raise HTTPException(403, "Forbidden")
+    if not data.override_reason: raise HTTPException(400, "manual mark reason is required")
     return attendance_service.override_record(db, id, current_user.id, data.model_dump(exclude_unset=True))
 
 @router.get("/records/{id}/attempts", response_model=List[AttemptOut])
