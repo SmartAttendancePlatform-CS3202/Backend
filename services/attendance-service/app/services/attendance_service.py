@@ -113,15 +113,13 @@ def verify_location_precheck(db: Session, student_id: UUID, payload):
     is_test_class = (session_id_str == "TEST_MOCK_CLASS")
 
     if is_test_class:
-        dist = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
-        inside = dist <= 30.0
         return {
             "success": True,
-            "inside": inside,
-            "distance_meters": round(dist, 2),
-            "radius_meters": 30,
-            "venue_name": "Seminar Room (Mock)",
-            "message": "Within 30m geofence" if inside else f"Outside 30m geofence ({round(dist)}m away, must be <= 30m)",
+            "inside": True,
+            "distance_meters": 0.0,
+            "radius_meters": 999999,
+            "venue_name": "Anywhere (Testing & Debugging)",
+            "message": "Testing class: Allowed from any place (Geofence bypassed)",
         }
 
     try:
@@ -337,7 +335,7 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
                 ),
             }
 
-        # Direct DB computation using stored vector(192)
+        # Direct DB computation using stored vector(512)
         norm_ref = math.sqrt(sum(float(x) * float(x) for x in profile.embedding))
         norm_live = math.sqrt(sum(float(x) * float(x) for x in payload.face_embedding))
         if norm_ref == 0.0 or norm_live == 0.0:
@@ -352,7 +350,7 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             if isinstance(stored_poses, list) and len(stored_poses) > 0:
                 sims = []
                 for p in stored_poses:
-                    if isinstance(p, list) and len(p) == 192:
+                    if isinstance(p, list) and len(p) == 512:
                         p_norm = math.sqrt(sum(float(x) * float(x) for x in p))
                         if p_norm > 0:
                             p_dot = sum(float(a) * float(b) for a, b in zip(p, payload.face_embedding))
@@ -411,14 +409,10 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
     geo_failure_reason = None
 
     if is_test_class:
-        if payload.latitude is None or payload.longitude is None:
-            geo_inside = False
-            geo_failure_reason = "Missing GPS coordinates"
-        else:
-            distance_m = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
-            geo_inside = (distance_m <= 30.0)
-            if not geo_inside:
-                geo_failure_reason = f"Outside 30m geofence ({round(distance_m)}m away, must be <= 30m)"
+        # Testing class is explicitly allowed from any place
+        geo_inside = True
+        distance_m = 0.0
+        geo_failure_reason = None
     elif session:
         if payload.latitude is None or payload.longitude is None:
             geo_inside = False
