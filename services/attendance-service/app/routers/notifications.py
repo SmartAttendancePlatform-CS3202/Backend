@@ -16,8 +16,8 @@ def get_my_notifications(current_user: User = Depends(get_current_user), db: Ses
     return notification_service.get_my_notices(db, current_user.id)
 
 @router.get("/all")
-def get_all_notifications(current_user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    return notification_service.get_all_notices(db)
+def get_all_notifications(current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
+    return notification_service.get_all_notices(db, current_user.id)
 
 @router.post("/broadcast", status_code=status.HTTP_201_CREATED)
 def broadcast_notification(data: NoticeBroadcast, current_user: User = Depends(require_role("admin", "lecturer")), db: Session = Depends(get_db)):
