@@ -112,11 +112,11 @@ def active_windows(
             "random_check_active": False,
             "random_check_window": None,
             "venue_geofence": {
-                "venue_name": "Seminar Room (Mock)",
-                "building": "CSE Department, UoM",
-                "latitude": 6.7951,
-                "longitude": 79.9009,
-                "radius_meters": 30,
+                "venue_name": "Anywhere (Testing & Debugging)",
+                "building": "Virtual / Testing Mode",
+                "latitude": 0.0,
+                "longitude": 0.0,
+                "radius_meters": 999999,
             },
         }
     try:
