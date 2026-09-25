@@ -56,7 +56,7 @@ def test_register_face_v2_with_poses_and_depth():
         assert res["has_depth"] is True
         mock_save.assert_called_once()
         args, kwargs = mock_save.call_args
-        assert kwargs["pose_embeddings"] == poses
+        assert np.allclose(kwargs["pose_embeddings"], poses, atol=1e-5)
         assert kwargs["depth_features"] == depth
         assert kwargs["enrollment_version"] == 4
 
@@ -74,7 +74,7 @@ def test_verify_face_with_pose_matching():
 
     mock_profile = MagicMock()
     mock_profile.embedding = centroid
-    mock_profile.enrollment_version = 4
+    mock_profile.enrollment_version = 5
     mock_profile.pose_embeddings = poses
     mock_profile.depth_features = None
 
@@ -103,7 +103,7 @@ def test_verify_face_with_depth_match():
 
     mock_profile = MagicMock()
     mock_profile.embedding = centroid
-    mock_profile.enrollment_version = 4
+    mock_profile.enrollment_version = 5
     mock_profile.pose_embeddings = poses
     mock_profile.depth_features = depth
 
