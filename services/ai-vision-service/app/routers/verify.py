@@ -1,9 +1,13 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from shared_core.auth.rbac import verify_internal_key
 from shared_core.db.session import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from app.services import matching_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["verification"])
 
@@ -12,9 +16,9 @@ class VerifyRequest(BaseModel):
     student_id: str
     face_embedding: list[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional MobileFaceNet embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional FaceNet embedding vector",
     )
     depth_features: list[float] | None = Field(
         default=None,
@@ -26,9 +30,9 @@ class RegisterRequest(BaseModel):
     student_id: str
     face_embedding: list[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional MobileFaceNet centroid embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional FaceNet centroid embedding vector",
     )
     quality_score: float = Field(default=1.0, ge=0.0, le=1.0)
     pose_embeddings: list[list[float]] | None = Field(
@@ -76,3 +80,11 @@ def register_face(payload: RegisterRequest, db: Session = Depends(get_db)):
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error(f"Database error during face registration for student {payload.student_id}: {exc}", exc_info=True)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error during face registration: {str(exc)}") from exc
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Unexpected error during face registration for student {payload.student_id}: {exc}", exc_info=True)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Face registration failed: {str(exc)}") from exc

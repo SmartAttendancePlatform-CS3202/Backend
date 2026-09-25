@@ -12,10 +12,10 @@ def test_checkin_request_validation():
         "lecture_session_id": str(uuid4()),
         "latitude": 6.9271,
         "longitude": 79.8612,
-        "face_embedding": [0.01] * 192,
+        "face_embedding": [0.01] * 512,
     }
     req = CheckInRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 192
+    assert len(req.face_embedding) == 512
 
     # Test invalid dimension
     with pytest.raises(Exception):
@@ -28,10 +28,10 @@ def test_random_check_request_validation():
         "verification_window_id": str(uuid4()),
         "latitude": 6.9271,
         "longitude": 79.8612,
-        "face_embedding": [0.01] * 192,
+        "face_embedding": [0.01] * 512,
     }
     req = RandomCheckRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 192
+    assert len(req.face_embedding) == 512
 
     with pytest.raises(Exception):
         RandomCheckRequest.model_validate({**valid_payload, "face_embedding": [0.01] * 50})
@@ -58,7 +58,7 @@ async def test_record_random_check_success():
         verification_window_id=window_id,
         latitude=0.0,
         longitude=0.0,
-        face_embedding=[0.02] * 192,
+        face_embedding=[0.02] * 512,
     )
 
     with patch(
@@ -81,7 +81,7 @@ def test_onboarding_register_face_calls_ai_vision_client():
     student_user = MagicMock(spec=User)
     student_user.id = uuid4()
 
-    req = RegisterFaceRequest(face_embedding=[0.05] * 192, quality_score=0.9)
+    req = RegisterFaceRequest(face_embedding=[0.05] * 512, quality_score=0.9)
 
     with patch(
         "app.clients.ai_vision_client.register_face",
