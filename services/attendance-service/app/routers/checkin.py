@@ -18,9 +18,9 @@ class CheckInRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     face_embedding: List[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional MobileFaceNet embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional FaceNet embedding vector",
     )
 
 
@@ -31,9 +31,9 @@ class RandomCheckRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     face_embedding: List[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional MobileFaceNet embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional FaceNet embedding vector",
     )
 
 
@@ -50,9 +50,9 @@ class VerifyFaceRequest(BaseModel):
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     face_embedding: List[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional MobileFaceNet embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional FaceNet embedding vector",
     )
     depth_features: Optional[List[float]] = None
 
@@ -112,11 +112,11 @@ def active_windows(
             "random_check_active": False,
             "random_check_window": None,
             "venue_geofence": {
-                "venue_name": "Anywhere (Testing & Debugging)",
-                "building": "Virtual / Testing Mode",
-                "latitude": 0.0,
-                "longitude": 0.0,
-                "radius_meters": 999999,
+                "venue_name": "CSE Seminar Room",
+                "building": "CSE Department, UoM",
+                "latitude": 6.7951,
+                "longitude": 79.9009,
+                "radius_meters": 30,
             },
         }
     try:

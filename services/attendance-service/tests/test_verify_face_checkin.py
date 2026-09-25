@@ -31,10 +31,10 @@ def test_verify_face_request_validation():
         "lecture_session_id": "TEST_MOCK_CLASS",
         "latitude": 6.9271,
         "longitude": 79.8612,
-        "face_embedding": [0.05] * 192,
+        "face_embedding": [0.05] * 512,
     }
     req = VerifyFaceRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 192
+    assert len(req.face_embedding) == 512
     assert req.lecture_session_id == "TEST_MOCK_CLASS"
 
     # Test invalid dimension
@@ -51,7 +51,7 @@ def test_verify_face_no_registered_profile():
 
     payload = VerifyFaceRequest(
         lecture_session_id="TEST_MOCK_CLASS",
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
@@ -66,7 +66,7 @@ def test_verify_face_matching_success():
 
     # Mock matching profile: identical embedding
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [0.05] * 192
+    mock_profile.embedding = [0.05] * 512
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
 
@@ -76,7 +76,7 @@ def test_verify_face_matching_success():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.7951,
         longitude=79.9009,
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
@@ -92,7 +92,7 @@ def test_verify_face_mismatch_failure():
 
     # Orthogonal / inverse embedding to simulate different person
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [1.0] * 96 + [0.0] * 96
+    mock_profile.embedding = [1.0] * 256 + [0.0] * 256
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
 
@@ -103,7 +103,7 @@ def test_verify_face_mismatch_failure():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.7951,
         longitude=79.9009,
-        face_embedding=[0.0] * 96 + [1.0] * 96,
+        face_embedding=[0.0] * 256 + [1.0] * 256,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
@@ -119,7 +119,7 @@ def test_verify_face_outside_geofence_rejected():
 
     # Face is an exact match!
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [0.05] * 192
+    mock_profile.embedding = [0.05] * 512
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
 
@@ -130,7 +130,7 @@ def test_verify_face_outside_geofence_rejected():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.8200,
         longitude=79.9009,
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
@@ -146,7 +146,7 @@ def test_verify_face_missing_gps_rejected():
     student_id = uuid4()
 
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [0.05] * 192
+    mock_profile.embedding = [0.05] * 512
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
 
@@ -156,7 +156,7 @@ def test_verify_face_missing_gps_rejected():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=None,
         longitude=None,
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
@@ -198,7 +198,7 @@ def test_router_verify_face_endpoint(client):
         "latitude": 6.7951,
         "longitude": 79.9009,
 
-        "face_embedding": [0.05] * 192,
+        "face_embedding": [0.05] * 512,
     }
 
     with patch(
@@ -226,10 +226,10 @@ def test_verify_face_legacy_enrollment_version_rejected():
     student_id = uuid4()
 
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [0.05] * 192
+    mock_profile.embedding = [0.05] * 512
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
-    mock_profile.enrollment_version = 2  # Legacy version < 3
+    mock_profile.enrollment_version = 3  # Legacy version < 4
 
     db.query.return_value.filter.return_value.first.return_value = mock_profile
 
@@ -237,7 +237,7 @@ def test_verify_face_legacy_enrollment_version_rejected():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.7951,
         longitude=79.9009,
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
     )
 
     with patch("app.services.attendance_service.ai_vision_client.verify_face", side_effect=Exception("Service offline")):
@@ -253,10 +253,10 @@ def test_verify_face_spoofed_depth_rejected():
     student_id = uuid4()
 
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [0.05] * 192
+    mock_profile.embedding = [0.05] * 512
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = [1.0] * 24 + [0.0] * 24
-    mock_profile.enrollment_version = 3
+    mock_profile.enrollment_version = 4
 
     db.query.return_value.filter.return_value.first.return_value = mock_profile
 
@@ -264,7 +264,7 @@ def test_verify_face_spoofed_depth_rejected():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.7951,
         longitude=79.9009,
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
         depth_features=[0.0] * 24 + [1.0] * 24,  # Orthogonal depth (spoof attempt)
     )
 

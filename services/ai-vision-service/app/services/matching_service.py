@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.repositories import face_data_repository
 from app.services import adaptive_learning
 
-EXPECTED_EMBEDDING_DIM = 192
+EXPECTED_EMBEDDING_DIM = 512
 EXPECTED_DEPTH_DIM = 48
 DEFAULT_SIMILARITY_THRESHOLD = 0.70
 
@@ -48,7 +48,7 @@ def register_face(
     pose_embeddings: list[list[float]] | None = None,
     depth_features: list[float] | None = None,
     enrollment_metadata: dict | None = None,
-    enrollment_version: int = 3,
+    enrollment_version: int = 4,
 ) -> dict[str, Any]:
     valid_centroid = _validate_vector(embedding)
 
@@ -101,17 +101,17 @@ def verify_face(
 
     threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", str(DEFAULT_SIMILARITY_THRESHOLD)))
 
-    # Version check: Require modern v3 RGB embeddings
-    raw_version = getattr(profile, "enrollment_version", 3)
+    # Version check: Require modern v4 512D FaceNet embeddings
+    raw_version = getattr(profile, "enrollment_version", 4)
     if isinstance(raw_version, (int, float)):
         version = int(raw_version)
     else:
         try:
             version = int(str(raw_version))
         except (ValueError, TypeError):
-            version = 3
+            version = 4
 
-    if version < 3:
+    if version < 4:
         return {
             "is_match": False,
             "confidence": 0.0,

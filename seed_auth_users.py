@@ -205,6 +205,30 @@ def seed_users():
                         if st_insert.status_code in (200, 201, 204):
                             print(f"   |-- provisioned DB public.students record for {user['email']}")
 
+            # If user is a lecturer, ensure public.lecturers row exists
+            if user["role"] == "lecturer":
+                lec_check = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/lecturers?id=eq.{user_id}",
+                    headers=headers,
+                )
+                if lec_check.status_code == 200 and not lec_check.json():
+                    dept_res = requests.get(f"{SUPABASE_URL}/rest/v1/departments?limit=1", headers=headers)
+                    dept_id = dept_res.json()[0]["id"] if dept_res.status_code == 200 and dept_res.json() else None
+                    lecturer_data = {
+                        "id": user_id,
+                        "lecturer_code": f"LEC-{user['username'].upper().replace('.', '-')}",
+                        "department_id": dept_id,
+                        "email": user["email"],
+                        "contact_number": "+94 77 123 4567",
+                    }
+                    lec_insert = requests.post(
+                        f"{SUPABASE_URL}/rest/v1/lecturers",
+                        headers={**headers, "Prefer": "resolution=ignore-duplicates"},
+                        json=lecturer_data,
+                    )
+                    if lec_insert.status_code in (200, 201, 204):
+                        print(f"   |-- provisioned DB public.lecturers record for {user['email']}")
+
     print("\n--- Current Users in Database ---")
     list_res = requests.get(
         f"{SUPABASE_URL}/rest/v1/users?select=username,role,status",

@@ -16,13 +16,13 @@ REGISTER_FACE_ATTEMPTS = Counter("register_face_attempt_count", "Face registrati
 class RegisterFaceRequest(BaseModel):
     face_embedding: List[float] = Field(
         ...,
-        min_length=192,
-        max_length=192,
-        description="192-dimensional centroid MobileFaceNet embedding vector",
+        min_length=512,
+        max_length=512,
+        description="512-dimensional centroid FaceNet embedding vector",
     )
     pose_embeddings: Optional[List[List[float]]] = Field(
         default=None,
-        description="List of 192D embeddings captured across guided poses (Center, Left, Right, Up, Down)",
+        description="List of 512D embeddings captured across guided poses (Center, Left, Right, Up, Down)",
     )
     depth_features: Optional[List[float]] = Field(
         default=None,

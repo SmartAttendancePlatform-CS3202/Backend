@@ -8,7 +8,7 @@ from app.services.matching_service import (
 )
 
 
-def _make_unit_vector(dim=192, seed=42):
+def _make_unit_vector(dim=512, seed=42):
     rng = np.random.default_rng(seed)
     v = rng.standard_normal(dim)
     return (v / np.linalg.norm(v)).tolist()
@@ -48,17 +48,17 @@ def test_register_face_v2_with_poses_and_depth():
             pose_embeddings=poses,
             depth_features=depth,
             enrollment_metadata=metadata,
-            enrollment_version=2,
+            enrollment_version=4,
         )
         assert res["status"] == "success"
-        assert res["enrollment_version"] == 2
+        assert res["enrollment_version"] == 4
         assert res["pose_count"] == 5
         assert res["has_depth"] is True
         mock_save.assert_called_once()
         args, kwargs = mock_save.call_args
         assert kwargs["pose_embeddings"] == poses
         assert kwargs["depth_features"] == depth
-        assert kwargs["enrollment_version"] == 2
+        assert kwargs["enrollment_version"] == 4
 
 
 def test_verify_face_with_pose_matching():
@@ -74,6 +74,7 @@ def test_verify_face_with_pose_matching():
 
     mock_profile = MagicMock()
     mock_profile.embedding = centroid
+    mock_profile.enrollment_version = 4
     mock_profile.pose_embeddings = poses
     mock_profile.depth_features = None
 
@@ -102,6 +103,7 @@ def test_verify_face_with_depth_match():
 
     mock_profile = MagicMock()
     mock_profile.embedding = centroid
+    mock_profile.enrollment_version = 4
     mock_profile.pose_embeddings = poses
     mock_profile.depth_features = depth
 
