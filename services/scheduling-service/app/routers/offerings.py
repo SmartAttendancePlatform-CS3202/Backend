@@ -44,7 +44,8 @@ def update(id:UUID,data:CourseOfferingUpdate,current_user:User=Depends(require_r
     if getattr(current_user.role,'value',current_user.role)=='lecturer':
         if obj.lecturer_id != current_user.id: raise HTTPException(403,"Forbidden")
         payload=data.model_dump(exclude_unset=True)
-        payload.pop("lecturer_id",None)
+        for locked in ("lecturer_id", "day", "start_time", "end_time", "venue_id"):
+            payload.pop(locked, None)
     else:
         payload=data.model_dump(exclude_unset=True)
     return offering_service.update_offering(db,id,payload)

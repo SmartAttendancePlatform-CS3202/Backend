@@ -12,7 +12,9 @@ from urllib.parse import urlparse, urlencode, parse_qsl, urlunparse
 
 def _normalize_database_url(database_url: str) -> str:
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
     # Strip pgbouncer parameter
     parsed = urlparse(database_url)

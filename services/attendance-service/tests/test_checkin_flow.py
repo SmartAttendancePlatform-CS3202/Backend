@@ -12,10 +12,10 @@ def test_checkin_request_validation():
         "lecture_session_id": str(uuid4()),
         "latitude": 6.9271,
         "longitude": 79.8612,
-        "face_embedding": [0.01] * 192,
+        "face_embedding": [0.01] * 512,
     }
     req = CheckInRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 192
+    assert len(req.face_embedding) == 512
 
     # Test invalid dimension
     with pytest.raises(Exception):
@@ -28,24 +28,28 @@ def test_random_check_request_validation():
         "verification_window_id": str(uuid4()),
         "latitude": 6.9271,
         "longitude": 79.8612,
-        "face_embedding": [0.01] * 192,
+        "face_embedding": [0.01] * 512,
     }
     req = RandomCheckRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 192
+    assert len(req.face_embedding) == 512
 
     with pytest.raises(Exception):
         RandomCheckRequest.model_validate({**valid_payload, "face_embedding": [0.01] * 50})
 
 
 @pytest.mark.anyio
-async def test_record_random_check_publishes_task_without_gps_check():
+async def test_record_random_check_success():
     db = MagicMock()
     student_id = uuid4()
     session_id = uuid4()
     window_id = uuid4()
 
+    from datetime import datetime, timezone
     mock_session = MagicMock()
     mock_session.id = session_id
+    mock_session.status = "ongoing"
+    mock_session.scheduled_at = datetime.now(timezone.utc)
+    mock_session.duration_mins = 60
     mock_window = MagicMock()
     mock_window.id = window_id
 
@@ -54,7 +58,7 @@ async def test_record_random_check_publishes_task_without_gps_check():
         verification_window_id=window_id,
         latitude=0.0,
         longitude=0.0,
-        face_embedding=[0.02] * 192,
+        face_embedding=[0.02] * 512,
     )
 
     with patch(
@@ -64,15 +68,12 @@ async def test_record_random_check_publishes_task_without_gps_check():
         "app.repositories.attendance_repository.get_open_window",
         return_value=mock_window,
     ), patch(
-        "app.services.attendance_service.publish_verification_task",
-        new_callable=AsyncMock,
-    ) as mock_pub:
+        "app.services.attendance_service._venue_check",
+        return_value=({"inside": True, "distance_m": 10.0}, 10.0),
+    ):
         res = await record_random_check(db, student_id, payload)
-        assert res["status"] == "processing"
-        mock_pub.assert_awaited_once()
-        task = mock_pub.call_args[0][0]
-        assert task.student_id == student_id
-        assert len(task.face_embedding) == 192
+        assert res["status"] == "success"
+        assert "attempt_id" in res
 
 
 def test_onboarding_register_face_calls_ai_vision_client():
@@ -80,7 +81,7 @@ def test_onboarding_register_face_calls_ai_vision_client():
     student_user = MagicMock(spec=User)
     student_user.id = uuid4()
 
-    req = RegisterFaceRequest(face_embedding=[0.05] * 192, quality_score=0.9)
+    req = RegisterFaceRequest(face_embedding=[0.05] * 512, quality_score=0.9)
 
     with patch(
         "app.clients.ai_vision_client.register_face",

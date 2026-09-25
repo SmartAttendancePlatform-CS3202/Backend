@@ -12,7 +12,7 @@ async def test_consumer_handle_success():
         attempt_id=uuid4(),
         student_id=uuid4(),
         verification_window_id=uuid4(),
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
         latitude=6.9271,
         longitude=79.8612,
     )
@@ -48,7 +48,7 @@ async def test_consumer_handle_no_profile_error():
         attempt_id=uuid4(),
         student_id=uuid4(),
         verification_window_id=uuid4(),
-        face_embedding=[0.05] * 192,
+        face_embedding=[0.05] * 512,
         latitude=6.9271,
         longitude=79.8612,
     )
