@@ -57,7 +57,7 @@ def test_register_face_v2_with_poses_and_depth():
         mock_save.assert_called_once()
         args, kwargs = mock_save.call_args
         assert np.allclose(kwargs["pose_embeddings"], poses, atol=1e-5)
-        assert kwargs["depth_features"] == depth
+        assert np.allclose(kwargs["depth_features"], depth, atol=1e-5)
         assert kwargs["enrollment_version"] == 4
 
 
