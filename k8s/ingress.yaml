@@ -5,10 +5,16 @@ metadata:
   namespace: smart-attendance
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-scheduling-prefix@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: myresolver
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - smart-attendance-mrt.duckdns.org
+      secretName: attendance-tls
   rules:
-    - host: attendance.example.com
+    - host: smart-attendance-mrt.duckdns.org
       http:
         paths:
           - path: /scheduling
@@ -26,10 +32,17 @@ metadata:
   namespace: smart-attendance
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-attendance-prefix@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: myresolver
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - smart-attendance-mrt.duckdns.org
+      secretName: attendance-tls
   rules:
-    - http:
+    - host: smart-attendance-mrt.duckdns.org
+      http:
         paths:
           - path: /attendance
             pathType: Prefix
@@ -46,10 +59,17 @@ metadata:
   namespace: smart-attendance
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: smart-attendance-strip-vision-prefix@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: myresolver
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - smart-attendance-mrt.duckdns.org
+      secretName: attendance-tls
   rules:
-    - http:
+    - host: smart-attendance-mrt.duckdns.org
+      http:
         paths:
           - path: /vision
             pathType: Prefix
@@ -64,10 +84,18 @@ kind: Ingress
 metadata:
   name: grafana-ingress
   namespace: monitoring
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: myresolver
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - smart-attendance-mrt.duckdns.org
+      secretName: attendance-tls
   rules:
-    - http:
+    - host: smart-attendance-mrt.duckdns.org
+      http:
         paths:
           - path: /grafana
             pathType: Prefix
@@ -82,10 +110,18 @@ kind: Ingress
 metadata:
   name: kibana-ingress
   namespace: logging
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: myresolver
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - smart-attendance-mrt.duckdns.org
+      secretName: attendance-tls
   rules:
-    - http:
+    - host: smart-attendance-mrt.duckdns.org
+      http:
         paths:
           - path: /kibana
             pathType: Prefix
