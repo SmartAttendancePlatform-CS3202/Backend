@@ -17,7 +17,7 @@ def save_embedding(
     pose_embeddings: list[list[float]] | None = None,
     depth_features: list[float] | None = None,
     enrollment_metadata: dict | None = None,
-    enrollment_version: int = 4,
+    enrollment_version: int = 5,
 ):
     existing = get_active_embedding(db, student_id)
     if existing:

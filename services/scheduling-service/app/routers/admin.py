@@ -28,6 +28,8 @@ def audit_logs(skip: int = 0, limit: int = 100, current_user: User = Depends(req
             "timestamp": row.created_at,
             "severity": "critical" if "security" in row.action.lower() else "info",
             "ip_address": str(row.ip_address) if row.ip_address else None,
+            "node_endpoint": f"/api/v1/{(row.entity_type or 'system').split('.')[0]}/{row.action.replace(' ', '_').lower()}",
+            "payload": row.new_data or row.old_data or {},
         })
     return out
 

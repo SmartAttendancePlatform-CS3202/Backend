@@ -5,7 +5,7 @@ from app.services.matching_service import (
     EXPECTED_EMBEDDING_DIM,
     register_face,
     verify_face,
-    _validate_vector,
+    _normalize_vector,
 )
 
 
@@ -17,34 +17,34 @@ def _make_unit_vector(dim=512, seed=42):
 
 def test_validate_vector_valid():
     vec = _make_unit_vector(512)
-    arr = _validate_vector(vec)
+    arr = _normalize_vector(vec, 512, "Embedding")
     assert arr.shape == (512,)
     assert np.isclose(np.linalg.norm(arr), 1.0)
 
 
 def test_validate_vector_wrong_dimension():
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
-        _validate_vector([0.1] * 128)
+        _normalize_vector([0.1] * 128, 512, "Embedding")
 
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
-        _validate_vector([0.1] * 192)
+        _normalize_vector([0.1] * 192, 512, "Embedding")
 
 
 def test_validate_vector_none():
     with pytest.raises(ValueError, match="Embedding vector must be provided"):
-        _validate_vector(None)
+        _normalize_vector(None, 512, "Embedding")
 
 
 def test_validate_vector_zero_magnitude():
     with pytest.raises(ValueError, match="zero magnitude"):
-        _validate_vector([0.0] * 512)
+        _normalize_vector([0.0] * 512, 512, "Embedding")
 
 
 def test_validate_vector_nan_or_inf():
     vec = [0.1] * 512
     vec[10] = float("nan")
     with pytest.raises(ValueError, match="NaN or infinite"):
-        _validate_vector(vec)
+        _normalize_vector(vec, 512, "Embedding")
 
 
 def test_verify_face_identical_match():
@@ -54,6 +54,9 @@ def test_verify_face_identical_match():
 
     mock_profile = MagicMock()
     mock_profile.embedding = vec
+    mock_profile.enrollment_version = 5
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = None
 
     with patch("app.repositories.face_data_repository.get_active_embedding", return_value=mock_profile):
         result = verify_face(db, student_id, vec)
@@ -71,6 +74,9 @@ def test_verify_face_different_person_mismatch():
 
     mock_profile = MagicMock()
     mock_profile.embedding = ref_vec
+    mock_profile.enrollment_version = 5
+    mock_profile.pose_embeddings = None
+    mock_profile.depth_features = None
 
     with patch("app.repositories.face_data_repository.get_active_embedding", return_value=mock_profile):
         result = verify_face(db, student_id, diff_vec)
@@ -97,7 +103,7 @@ def test_register_face():
         res = register_face(db, student_id, vec, quality_score=0.95)
         assert res["status"] == "success"
         assert res["student_id"] == student_id
-        assert res["enrollment_version"] == 4
+        assert res["enrollment_version"] == 5
         mock_save.assert_called_once()
 
 
@@ -108,13 +114,13 @@ def test_verify_face_legacy_version_rejected():
 
     mock_profile = MagicMock()
     mock_profile.embedding = vec
-    mock_profile.enrollment_version = 3  # Legacy version < 4
+    mock_profile.enrollment_version = 4  # Legacy version < 5
 
     with patch("app.repositories.face_data_repository.get_active_embedding", return_value=mock_profile):
         result = verify_face(db, student_id, vec)
         assert result["is_match"] is False
         assert result["requires_re_registration"] is True
-        assert "Legacy biometric profile" in result["message"]
+        assert "Major biometric upgrade detected" in result["message"]
 
 
 def test_verify_face_depth_anti_spoof_gate():
@@ -124,7 +130,7 @@ def test_verify_face_depth_anti_spoof_gate():
 
     mock_profile = MagicMock()
     mock_profile.embedding = vec
-    mock_profile.enrollment_version = 4
+    mock_profile.enrollment_version = 5
     mock_profile.pose_embeddings = None
     # Stored depth is all zeros
     mock_profile.depth_features = [0.0] * 48
