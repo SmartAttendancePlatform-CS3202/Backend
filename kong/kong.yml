@@ -1,6 +1,29 @@
 _format_version: "3.0"
 _transform: true
 
+plugins:
+  - name: cors
+    config:
+      origins:
+        - http://localhost:3000
+        - http://localhost:8081
+        - https://directx-web.vercel.app
+      methods:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - X-Internal-Key
+        - X-Request-ID
+      exposed_headers:
+        - Authorization
+      credentials: true
+      max_age: 3600
+
 services:
   - name: scheduling-service
     url: http://scheduling-service:8000
