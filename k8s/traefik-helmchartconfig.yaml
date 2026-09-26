@@ -1,0 +1,25 @@
+# Configures the built-in K3s Traefik for HTTPS + Let's Encrypt.
+# Apply once: kubectl apply -f k8s/traefik-helmchartconfig.yaml
+# Requires a real DNS name pointing at the cluster (not a placeholder host) for cert issuance.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        redirectTo:
+          port: websecure
+      websecure:
+        tls:
+          enabled: true
+    persistence:
+      enabled: true
+      path: /data
+    additionalArguments:
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=sankav.23@cse.mrt.ac.lk"
+      - "--certificatesresolvers.myresolver.acme.storage=/data/acme.json"
