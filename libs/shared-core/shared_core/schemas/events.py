@@ -8,7 +8,7 @@ class FaceVerificationTask(BaseModel):
     attempt_id: UUID
     student_id: UUID
     verification_window_id: UUID
-    face_embedding: list[float] = Field(min_length=192, max_length=192, description="192-D MobileFaceNet embedding vector")
+    face_embedding: list[float] = Field(min_length=512, max_length=512, description="512-D FaceNet embedding vector")
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
 

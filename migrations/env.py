@@ -44,7 +44,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
-    url = os.getenv("DATABASE_URL")
+    url = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL")
     if url:
         url = url.replace('?pgbouncer=true', '')
         configuration["sqlalchemy.url"] = url

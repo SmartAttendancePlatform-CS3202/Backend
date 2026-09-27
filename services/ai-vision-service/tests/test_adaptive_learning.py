@@ -10,7 +10,7 @@ from app.services.adaptive_learning import (
 )
 
 
-def _make_unit_vector(dim=192, seed=42):
+def _make_unit_vector(dim=512, seed=42):
     rng = np.random.default_rng(seed)
     v = rng.standard_normal(dim)
     return v / np.linalg.norm(v)
@@ -26,7 +26,7 @@ def test_calculate_centroid_drift_identical():
 def test_calculate_centroid_drift_slight_shift():
     v1 = _make_unit_vector(seed=1)
     v2 = _make_unit_vector(seed=2)
-    # v1 and v2 are roughly orthogonal in 192D (~90 deg)
+    # v1 and v2 are roughly orthogonal in 512D (~90 deg)
     # With alpha = 0.05, drift should be small (~2.8 - 3.0 degrees)
     updated, drift = calculate_centroid_drift(v1, v2, alpha=0.05)
     assert 0.0 < drift < 5.0
