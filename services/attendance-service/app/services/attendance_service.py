@@ -155,7 +155,9 @@ def _venue_check(session, latitude, longitude):
                 "shape_type": "circle",
                 "boundary_data": {"latitude": 6.7951, "longitude": 79.9009, "radius_meters": 30.0},
             }
-    result = geofence_check(latitude, longitude, venue["shape_type"], venue["boundary_data"])
+    shape_type = str(venue.get("shape_type") or "circle")
+    boundary_data = venue.get("boundary_data") if isinstance(venue.get("boundary_data"), dict) else {}
+    result = geofence_check(latitude, longitude, shape_type, boundary_data)
     return result, venue
 
 
