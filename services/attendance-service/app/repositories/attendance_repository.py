@@ -4,8 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 from sqlalchemy import cast, String, func
-from sqlalchemy.orm import Session
-from shared_core.models.attendance import LectureSession, VerificationWindow, AttendanceRecord, AttendanceVerificationAttempt
+from sqlalchemy.orm import Session, joinedload, selectinload
+from shared_core.models.attendance import LectureSession, VerificationWindow, AttendanceRecord, AttendanceVerificationAttempt, Venue
+from shared_core.models.courses import CourseOffering, Enrollment
+from shared_core.models.identity import Lecturer
 from shared_core.models.enums import SessionStatus, WindowType, AttendanceStatus, AttemptStatus
 
 
@@ -51,8 +53,22 @@ def create_scheduled_session(db: Session, data: dict, status: SessionStatus) -> 
     return obj
 
 
+_SESSION_EAGER_OPTIONS = (
+    joinedload(LectureSession.course_offering).joinedload(CourseOffering.course),
+    joinedload(LectureSession.course_offering).joinedload(CourseOffering.venue),
+    joinedload(LectureSession.course_offering).joinedload(CourseOffering.lecturer).joinedload(Lecturer.user),
+    joinedload(LectureSession.course_offering).selectinload(CourseOffering.enrollments),
+    selectinload(LectureSession.attendance_records),
+    selectinload(LectureSession.verification_windows),
+)
+
 def get_session(db: Session, session_id: UUID):
-    return db.query(LectureSession).filter(LectureSession.id == session_id).first()
+    return (
+        db.query(LectureSession)
+        .options(*_SESSION_EAGER_OPTIONS)
+        .filter(LectureSession.id == session_id)
+        .first()
+    )
 
 
 def get_session_for_occurrence(db: Session, offering_id: UUID, scheduled_at: datetime):
@@ -67,7 +83,7 @@ def get_session_for_occurrence(db: Session, offering_id: UUID, scheduled_at: dat
 
 
 def get_sessions(db: Session, offering_id=None, skip=0, limit=100, status=None):
-    q = db.query(LectureSession).order_by(LectureSession.scheduled_at.desc())
+    q = db.query(LectureSession).options(*_SESSION_EAGER_OPTIONS).order_by(LectureSession.scheduled_at.desc())
     if offering_id: q = q.filter(LectureSession.course_offering_id == offering_id)
     if status:
         q = q.filter(cast(LectureSession.status, String) == status)
