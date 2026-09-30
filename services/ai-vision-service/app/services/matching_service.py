@@ -4,12 +4,10 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 from app.repositories import face_data_repository
-from app.services import adaptive_learning
 
-EXPECTED_EMBEDDING_DIM = 512
+EXPECTED_EMBEDDING_DIM = 192
 EXPECTED_DEPTH_DIM = 48
 DEFAULT_SIMILARITY_THRESHOLD = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", 0.70))
-ADAPTIVE_LEARNING_THRESHOLD = float(os.environ.get("FACE_ADAPTIVE_THRESHOLD", 0.88))
 MIN_DEPTH_THRESHOLD = 0.40
 
 
@@ -35,7 +33,6 @@ def verify_face(
     student_id: str,
     live_embedding: list[float],
     live_depth_features: list[float] | None = None,
-    trigger_adaptive_learning: bool = True,
 ) -> dict[str, Any]:
     # 1. Normalize probe vector
     live = _normalize_vector(live_embedding, EXPECTED_EMBEDDING_DIM, "Embedding")
@@ -103,19 +100,6 @@ def verify_face(
     # 6. Final Decision Gate
     is_match = confidence >= DEFAULT_SIMILARITY_THRESHOLD
 
-    # 7. Safe Adaptive Learning (Strict Threshold Guard)
-    adaptation_result = None
-    if is_match and trigger_adaptive_learning and confidence >= ADAPTIVE_LEARNING_THRESHOLD:
-        try:
-            adaptation_result = adaptive_learning.adapt_centroid_on_success(
-                db,
-                student_id,
-                live_embedding=live.tolist(),
-                match_confidence=confidence,
-            )
-        except Exception:
-            pass
-
     response: dict[str, Any] = {
         "is_match": is_match,
         "confidence": round(confidence, 4),
@@ -127,9 +111,6 @@ def verify_face(
         response["best_pose_similarity"] = round(best_pose_sim, 4)
     if depth_sim is not None:
         response["depth_similarity"] = round(depth_sim, 4)
-    if adaptation_result and adaptation_result.get("applied"):
-        response["adapted"] = True
-        response["drift_degrees"] = adaptation_result.get("angular_drift_deg")
 
     return response
 

@@ -16,9 +16,9 @@ class VerifyRequest(BaseModel):
     student_id: str
     face_embedding: list[float] = Field(
         ...,
-        min_length=512,
-        max_length=512,
-        description="512-dimensional FaceNet embedding vector",
+        min_length=192,
+        max_length=192,
+        description="192-dimensional MobileFaceNet embedding vector",
     )
     depth_features: list[float] | None = Field(
         default=None,
@@ -30,9 +30,9 @@ class RegisterRequest(BaseModel):
     student_id: str
     face_embedding: list[float] = Field(
         ...,
-        min_length=512,
-        max_length=512,
-        description="512-dimensional FaceNet centroid embedding vector",
+        min_length=192,
+        max_length=192,
+        description="192-dimensional MobileFaceNet centroid embedding vector",
     )
     quality_score: float = Field(default=1.0, ge=0.0, le=1.0)
     pose_embeddings: list[list[float]] | None = Field(
