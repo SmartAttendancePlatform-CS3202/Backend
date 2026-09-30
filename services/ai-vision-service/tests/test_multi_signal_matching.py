@@ -8,7 +8,7 @@ from app.services.matching_service import (
 )
 
 
-def _make_unit_vector(dim=512, seed=42):
+def _make_unit_vector(dim=192, seed=42):
     rng = np.random.default_rng(seed)
     v = rng.standard_normal(dim)
     return (v / np.linalg.norm(v)).tolist()
@@ -84,7 +84,6 @@ def test_verify_face_with_pose_matching():
             db,
             student_id,
             live_embedding=left_pose,
-            trigger_adaptive_learning=False,
         )
         assert "best_pose_similarity" in result
         assert np.isclose(result["best_pose_similarity"], 1.0, atol=1e-3)
@@ -113,7 +112,6 @@ def test_verify_face_with_depth_match():
             student_id,
             live_embedding=centroid,
             live_depth_features=depth,
-            trigger_adaptive_learning=False,
         )
         assert "depth_similarity" in result
         assert np.isclose(result["depth_similarity"], 1.0, atol=1e-2)
