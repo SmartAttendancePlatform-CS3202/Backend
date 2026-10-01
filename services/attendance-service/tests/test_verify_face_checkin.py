@@ -92,7 +92,7 @@ def test_verify_face_mismatch_failure():
 
     # Orthogonal / inverse embedding to simulate different person
     mock_profile = MagicMock(spec=FaceProfile)
-    mock_profile.embedding = [1.0] * 96 + [0.0] * 96
+    mock_profile.embedding = [1.0] * 256 + [0.0] * 256
     mock_profile.pose_embeddings = None
     mock_profile.depth_features = None
 
@@ -103,7 +103,7 @@ def test_verify_face_mismatch_failure():
         lecture_session_id="TEST_MOCK_CLASS",
         latitude=6.7951,
         longitude=79.9009,
-        face_embedding=[0.0] * 96 + [1.0] * 96,
+        face_embedding=[0.0] * 256 + [1.0] * 256,
     )
 
     res = verify_face_and_record_attendance(db, student_id, payload)
