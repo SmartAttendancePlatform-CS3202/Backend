@@ -26,9 +26,6 @@ def test_validate_vector_wrong_dimension():
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
         _normalize_vector([0.1] * 128, 512, "Embedding")
 
-    with pytest.raises(ValueError, match="Embedding dimension mismatch"):
-        _normalize_vector([0.1] * 512, 512, "Embedding")
-
 
 def test_validate_vector_none():
     with pytest.raises(ValueError, match="Embedding vector must be provided"):
