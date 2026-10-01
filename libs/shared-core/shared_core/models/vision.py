@@ -17,7 +17,7 @@ class FaceProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id"), nullable=False)
-    embedding: Mapped[Any] = mapped_column(Vector(192), nullable=False)
+    embedding: Mapped[Any] = mapped_column(Vector(512), nullable=False)
     pose_embeddings: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
     depth_features: Mapped[list[float] | None] = mapped_column(ARRAY(Numeric), nullable=True)
     enrollment_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
