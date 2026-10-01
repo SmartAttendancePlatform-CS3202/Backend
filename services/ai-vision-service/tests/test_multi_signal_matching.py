@@ -8,7 +8,7 @@ from app.services.matching_service import (
 )
 
 
-def _make_unit_vector(dim=192, seed=42):
+def _make_unit_vector(dim=512, seed=42):
     rng = np.random.default_rng(seed)
     v = rng.standard_normal(dim)
     return (v / np.linalg.norm(v)).tolist()

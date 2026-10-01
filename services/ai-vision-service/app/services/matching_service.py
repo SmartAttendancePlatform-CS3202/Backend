@@ -5,7 +5,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 from app.repositories import face_data_repository
 
-EXPECTED_EMBEDDING_DIM = 192
+EXPECTED_EMBEDDING_DIM = 512
 EXPECTED_DEPTH_DIM = 48
 DEFAULT_SIMILARITY_THRESHOLD = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", 0.70))
 MIN_DEPTH_THRESHOLD = 0.40
