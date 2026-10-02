@@ -33,7 +33,59 @@ def get_offering_report(db: Session, course_offering_id: UUID) -> OfferingReport
         if not r or r.status.value == "absent":
             if r: absent.append(_student_detail(r))
             else: absent.append(StudentAttendanceDetail(student_id=sid, status="absent"))
-    return OfferingReport(course_offering_id=course_offering_id, attendance_percentage=_percent(present, total), absentee_list=absent, late_arrival_list=late)
+    return OfferingReport(course_offering_id=course_offering_id, attendance_percentage=_percent(present, total), absentee_list=absent, late_arrival_list=late, total_sessions=len(sessions), total_students=len(enrolled_ids))
+
+def get_all_offering_reports(db: Session) -> list[OfferingReport]:
+    offerings_with_reports = []
+    sessions = db.query(LectureSession).all()
+    enrollments = db.query(Enrollment).filter(Enrollment.is_active.is_(True)).all()
+    
+    sessions_by_offering = defaultdict(list)
+    for s in sessions:
+        sessions_by_offering[s.course_offering_id].append(s)
+        
+    enrollments_by_offering = defaultdict(list)
+    for e in enrollments:
+        enrollments_by_offering[e.course_offering_id].append(e)
+        
+    offering_ids = set(sessions_by_offering.keys()) | set(enrollments_by_offering.keys())
+    
+    for oid in offering_ids:
+        s_list = sessions_by_offering.get(oid, [])
+        e_list = enrollments_by_offering.get(oid, [])
+        enrolled_ids = {e.student_id for e in e_list}
+        
+        if not s_list or not enrolled_ids:
+            offerings_with_reports.append(OfferingReport(course_offering_id=oid, attendance_percentage=0.0, absentee_list=[], late_arrival_list=[]))
+            continue
+            
+        records = [r for s in s_list for r in s.attendance_records]
+        latest_by_student = {}
+        for r in records:
+            latest_by_student[r.student_id] = r
+            
+        present = sum(r.status.value in {"present", "late"} for r in records)
+        total = len(s_list) * len(enrolled_ids)
+        
+        absent = []
+        late = []
+        for sid in enrolled_ids:
+            r = latest_by_student.get(sid)
+            if r and r.status.value == "late": late.append(_student_detail(r))
+            if not r or r.status.value == "absent":
+                if r: absent.append(_student_detail(r))
+                else: absent.append(StudentAttendanceDetail(student_id=sid, status="absent"))
+                
+        offerings_with_reports.append(OfferingReport(
+            course_offering_id=oid, 
+            attendance_percentage=_percent(present, total), 
+            absentee_list=absent, 
+            late_arrival_list=late,
+            total_sessions=len(s_list),
+            total_students=len(enrolled_ids)
+        ))
+        
+    return offerings_with_reports
 
 def get_offering_trends(db: Session, course_offering_id: UUID) -> TrendData:
     sessions = db.query(LectureSession).filter(LectureSession.course_offering_id == course_offering_id).order_by(LectureSession.scheduled_at).all()

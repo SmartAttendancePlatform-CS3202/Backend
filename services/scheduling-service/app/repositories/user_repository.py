@@ -64,4 +64,11 @@ def create_student(db: Session, student_data: dict) -> Student:
     db.add(student)
     db.commit()
     db.refresh(student)
-    return student
+    return student
+
+def create_lecturer(db: Session, lecturer_data: dict) -> Lecturer:
+    lecturer = Lecturer(**lecturer_data)
+    db.add(lecturer)
+    db.commit()
+    db.refresh(lecturer)
+    return lecturer

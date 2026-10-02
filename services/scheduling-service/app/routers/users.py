@@ -6,9 +6,10 @@ from typing import List, Optional
 from shared_core.db.session import get_db
 from shared_core.auth.jwt import get_current_user
 from shared_core.auth.rbac import require_role
-from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut, StudentRegistrationRequest
+from shared_core.schemas.identity import StudentOut, LecturerOut, UserOut, UserRoleUpdate, StudentUpdate, UserDirectoryOut, StudentRegistrationRequest, LecturerRegistrationRequest, AdminRegistrationRequest
 from shared_core.models.identity import User
 from shared_core.models.enums import UserRole, UserStatus
+from typing import Union
 
 from shared_core.audit import audit
 
@@ -20,14 +21,14 @@ except ImportError:  # pragma: no cover
 router = APIRouter(prefix="/users", tags=["users"])
 
 @router.post("/register", response_model=UserOut)
-def register_student_user(
-    data: StudentRegistrationRequest,
+def register_user(
+    data: Union[StudentRegistrationRequest, LecturerRegistrationRequest, AdminRegistrationRequest],
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
     try:
-        user = user_service.register_student(db, data, current_user.id)
-        audit(db, current_user.id, "user.register", "user", user.id, new_data={"email": data.email, "role": "student"})
+        user = user_service.register_user(db, data, current_user.id)
+        audit(db, current_user.id, "user.register", "user", user.id, new_data={"email": data.email, "role": data.role})
         return user
     except Exception as e:
         if isinstance(e, HTTPException):

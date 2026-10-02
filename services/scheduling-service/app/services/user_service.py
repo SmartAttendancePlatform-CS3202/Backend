@@ -63,7 +63,10 @@ from shared_core.config import get_settings
 from fastapi import HTTPException
 from shared_core.schemas.identity import StudentRegistrationRequest
 
-def register_student(db: Session, data: StudentRegistrationRequest, current_user_id: UUID):
+from shared_core.schemas.identity import StudentRegistrationRequest, LecturerRegistrationRequest, AdminRegistrationRequest
+from typing import Union
+
+def register_user(db: Session, data: Union[StudentRegistrationRequest, LecturerRegistrationRequest, AdminRegistrationRequest], current_user_id: UUID):
     settings = get_settings()
     # 1. Create user in Supabase
     headers = {
@@ -76,7 +79,7 @@ def register_student(db: Session, data: StudentRegistrationRequest, current_user
         "password": data.password,
         "email_confirm": True,
         "user_metadata": {
-            "role": "student",
+            "role": data.role,
             "username": data.email.split('@')[0],
         },
     }
@@ -95,7 +98,7 @@ def register_student(db: Session, data: StudentRegistrationRequest, current_user
     user_data = {
         "id": new_user_id,
         "username": data.email,
-        "role": "student",
+        "role": data.role,
         "status": "active",
         "is_active": True,
         "must_change_password": False,
@@ -104,26 +107,37 @@ def register_student(db: Session, data: StudentRegistrationRequest, current_user
     # Supabase might have an auth trigger that auto-creates the public.users row.
     existing_user = user_repository.get_user(db, new_user_id)
     if existing_user:
-        user_repository.update_user(db, existing_user, {"role": "student", "status": "active", "is_active": True})
+        user_repository.update_user(db, existing_user, {"role": data.role, "status": "active", "is_active": True})
     else:
         user_repository.create_user(db, user_data)
 
-    # 3. Create Student in Postgres
-    student_data = {
-        "id": new_user_id,
-        "student_index_no": data.student_index_no,
-        "full_name": data.full_name,
-        "name_with_initials": data.name_with_initials,
-        "display_name": data.display_name,
-        "department_id": data.department_id,
-        "academic_year_id": data.academic_year_id,
-        "date_of_birth": data.date_of_birth,
-        "gender": data.gender,
-        "nic": data.nic,
-        "contact_number": data.contact_number,
-        "address": data.address,
-        "registered_by": current_user_id
-    }
-    user_repository.create_student(db, student_data)
+    # 3. Create Profile in Postgres
+    if data.role == "student":
+        student_data = {
+            "id": new_user_id,
+            "student_index_no": getattr(data, "student_index_no", None),
+            "full_name": getattr(data, "full_name", None),
+            "name_with_initials": getattr(data, "name_with_initials", None),
+            "display_name": getattr(data, "display_name", None),
+            "department_id": getattr(data, "department_id", None),
+            "academic_year_id": getattr(data, "academic_year_id", None),
+            "date_of_birth": getattr(data, "date_of_birth", None),
+            "gender": getattr(data, "gender", None),
+            "nic": getattr(data, "nic", None),
+            "contact_number": getattr(data, "contact_number", None),
+            "address": getattr(data, "address", None),
+            "registered_by": current_user_id
+        }
+        user_repository.create_student(db, student_data)
+    elif data.role == "lecturer":
+        lecturer_data = {
+            "id": new_user_id,
+            "lecturer_code": getattr(data, "employee_id", None),
+            "display_name": getattr(data, "display_name", getattr(data, "full_name", None)),
+            "department_id": getattr(data, "department_id", None),
+            "email": data.email,
+            "contact_number": getattr(data, "contact_number", None),
+        }
+        user_repository.create_lecturer(db, lecturer_data)
     
     return user_repository.get_user(db, new_user_id)
