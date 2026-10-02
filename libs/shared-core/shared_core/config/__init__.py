@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     database_url: str = ""
     internal_api_key: str = ""
-    allowed_origins: str = "http://localhost:3000,http://localhost:8081"
+    allowed_origins: str = "http://localhost:3000,http://localhost:8081,https://directx-web.vercel.app"
     max_request_bytes: int = 6_000_000
     max_face_image_bytes: int = 5_000_000
     rate_limit_per_minute: int = 120

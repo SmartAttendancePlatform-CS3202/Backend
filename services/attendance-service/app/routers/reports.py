@@ -20,6 +20,13 @@ def get_offering_report(
 ):
     return report_service.get_offering_report(db, id)
 
+@router.get("/offerings", response_model=list[OfferingReport])
+def get_all_offering_reports(
+    current_user: User = Depends(require_role(["lecturer", "admin"])),
+    db: Session = Depends(get_db)
+):
+    return report_service.get_all_offering_reports(db)
+
 @router.get("/offerings/{id}/trends", response_model=TrendData)
 def get_offering_trends(
     id: UUID,

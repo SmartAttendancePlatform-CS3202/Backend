@@ -53,6 +53,7 @@ class LecturerOut(UserOut):
 class StudentRegistrationRequest(BaseModel):
     email: str = Field(..., description="Student email (username)")
     password: str = Field(..., min_length=6, description="Initial password")
+    role: str = Field("student")
     student_index_no: str
     full_name: str
     name_with_initials: str
@@ -65,6 +66,33 @@ class StudentRegistrationRequest(BaseModel):
     contact_number: Optional[str] = None
     address: Optional[str] = None
 
+class LecturerRegistrationRequest(BaseModel):
+    email: str = Field(..., description="Lecturer email (username)")
+    password: str = Field(..., min_length=6, description="Initial password")
+    role: str = Field("lecturer")
+    employee_id: str
+    full_name: str
+    name_with_initials: str
+    display_name: str
+    department_id: UUID
+    date_of_birth: date
+    gender: str
+    nic: Optional[str] = None
+    contact_number: Optional[str] = None
+    address: Optional[str] = None
+
+class AdminRegistrationRequest(BaseModel):
+    email: str = Field(..., description="Admin email (username)")
+    password: str = Field(..., min_length=6, description="Initial password")
+    role: str = Field("admin")
+    full_name: str
+    name_with_initials: str
+    display_name: str
+    date_of_birth: date
+    gender: str
+    nic: Optional[str] = None
+    contact_number: Optional[str] = None
+    address: Optional[str] = None
 
 class UserDirectoryOut(BaseModel):
     """Flattened admin-directory view of a user: base account fields plus
