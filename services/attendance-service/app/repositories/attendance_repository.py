@@ -203,6 +203,10 @@ def get_open_window(db: Session, lecture_session_id: UUID, window_type: str):
     return q.first()
 
 
+def get_window(db: Session, window_id: UUID):
+    return db.query(VerificationWindow).filter(VerificationWindow.id == window_id).first()
+
+
 def get_windows(db: Session, lecture_session_id: UUID):
     return db.query(VerificationWindow).filter(VerificationWindow.lecture_session_id == lecture_session_id).order_by(VerificationWindow.scheduled_open_at).all()
 
@@ -229,7 +233,16 @@ def find_attempt(db: Session, attempt_id: UUID):
 
 
 def get_attendance_records(db: Session, session_id=None, student_id=None):
-    q = db.query(AttendanceRecord).order_by(AttendanceRecord.created_at.desc())
+    q = (
+        db.query(AttendanceRecord)
+        .options(
+            joinedload(AttendanceRecord.lecture_session)
+            .joinedload(LectureSession.course_offering)
+            .joinedload(CourseOffering.course),
+            joinedload(AttendanceRecord.student)
+        )
+        .order_by(AttendanceRecord.created_at.desc())
+    )
     if session_id: q = q.filter(AttendanceRecord.lecture_session_id == session_id)
     if student_id: q = q.filter(AttendanceRecord.student_id == student_id)
     return q.all()

@@ -1,5 +1,5 @@
 from uuid import UUID, uuid4
-from typing import List, Optional
+from typing import List, Optional, Union
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -25,15 +25,15 @@ class CheckInRequest(BaseModel):
 
 
 class RandomCheckRequest(BaseModel):
-    lecture_session_id: UUID
-    verification_window_id: UUID
+    lecture_session_id: Union[UUID, str]
+    verification_window_id: Optional[Union[UUID, str]] = None
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-    face_embedding: List[float] = Field(
-        ...,
+    face_embedding: Optional[List[float]] = Field(
+        None,
         min_length=512,
         max_length=512,
-        description="512-dimensional FaceNet embedding vector",
+        description="Optional 512-dimensional FaceNet embedding vector",
     )
 
 
@@ -84,7 +84,7 @@ async def tick(
     return await attendance_service.record_check_in(db, current_user.id, payload)
 
 
-@router.post("/random-check", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/random-check", status_code=status.HTTP_200_OK)
 async def random_check(
     payload: RandomCheckRequest,
     current_user: User = Depends(require_role("student")),
