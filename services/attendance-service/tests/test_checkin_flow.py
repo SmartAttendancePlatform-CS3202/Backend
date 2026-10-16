@@ -1,5 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 import pytest
 from shared_core.models.identity import User
 from app.routers.checkin import CheckInRequest, RandomCheckRequest
@@ -31,8 +31,30 @@ def test_random_check_request_validation():
         "face_embedding": [0.01] * 512,
     }
     req = RandomCheckRequest.model_validate(valid_payload)
-    assert len(req.face_embedding) == 512
+    assert req.face_embedding is not None and len(req.face_embedding) == 512
 
+    # Test location-only payload without face embedding
+    loc_only = {
+        "lecture_session_id": str(uuid4()),
+        "latitude": 6.9271,
+        "longitude": 79.8612,
+    }
+    req_loc = RandomCheckRequest.model_validate(loc_only)
+    assert req_loc.face_embedding is None
+    assert req_loc.latitude == 6.9271
+
+    # Test string UUID and string window ID
+    str_payload = {
+        "lecture_session_id": str(uuid4()),
+        "verification_window_id": str(uuid4()),
+        "latitude": 6.9271,
+        "longitude": 79.8612,
+    }
+    req_str = RandomCheckRequest.model_validate(str_payload)
+    assert isinstance(req_str.lecture_session_id, (str, UUID))
+    assert req_str.verification_window_id is not None
+
+    # Test invalid dimension when provided
     with pytest.raises(Exception):
         RandomCheckRequest.model_validate({**valid_payload, "face_embedding": [0.01] * 50})
 
@@ -59,12 +81,12 @@ async def test_record_random_check_success():
     mock_record.is_manually_overridden = False
     mock_record.status = MagicMock(value="present")
 
+    # Location-only payload (no face embedding)
     payload = RandomCheckRequest(
         lecture_session_id=session_id,
         verification_window_id=window_id,
         latitude=0.0,
         longitude=0.0,
-        face_embedding=[0.02] * 512,
     )
 
     with patch(
@@ -77,14 +99,60 @@ async def test_record_random_check_success():
         "app.repositories.attendance_repository.get_attendance_record",
         return_value=mock_record,
     ), patch(
-        "app.services.attendance_service._match_student_face",
-        return_value=(True, 0.95, 0.70, None, False),
+        "app.services.attendance_service._venue_check",
+        return_value=({"inside": True, "distance_meters": 10.0}, {"name": "Test Venue"}),
+    ):
+        res = await record_random_check(db, student_id, payload)
+        assert res["status"] == "success"
+        assert res["is_fully_marked"] is True
+        assert "attempt_id" in res
+
+
+@pytest.mark.anyio
+async def test_record_random_check_before_initial_check():
+    db = MagicMock()
+    student_id = uuid4()
+    session_id = uuid4()
+    window_id = uuid4()
+
+    from datetime import datetime, timezone
+    mock_session = MagicMock()
+    mock_session.id = session_id
+    mock_session.status = "ongoing"
+    mock_session.scheduled_at = datetime.now(timezone.utc)
+    mock_session.duration_mins = 60
+    mock_session.course_offering = MagicMock(late_threshold_minutes=10)
+    mock_window = MagicMock()
+    mock_window.id = window_id
+
+    mock_record = MagicMock()
+    mock_record.first_check_in_at = None
+    mock_record.is_manually_overridden = False
+    mock_record.status = MagicMock(value="absent")
+
+    payload = RandomCheckRequest(
+        lecture_session_id=session_id,
+        verification_window_id=window_id,
+        latitude=0.0,
+        longitude=0.0,
+    )
+
+    with patch(
+        "app.services.attendance_service._assert_student_enrolled",
+        return_value=mock_session,
+    ), patch(
+        "app.repositories.attendance_repository.get_open_window",
+        return_value=mock_window,
+    ), patch(
+        "app.repositories.attendance_repository.get_attendance_record",
+        return_value=mock_record,
     ), patch(
         "app.services.attendance_service._venue_check",
         return_value=({"inside": True, "distance_meters": 10.0}, {"name": "Test Venue"}),
     ):
         res = await record_random_check(db, student_id, payload)
         assert res["status"] == "success"
+        assert res["is_fully_marked"] is False
         assert "attempt_id" in res
 
 
