@@ -68,10 +68,21 @@ from typing import Union
 
 def register_user(db: Session, data: Union[StudentRegistrationRequest, LecturerRegistrationRequest, AdminRegistrationRequest], current_user_id: UUID):
     settings = get_settings()
+    supabase_url = (settings.supabase_url or "").strip().rstrip("/")
+    if not supabase_url or "YOUR_PROJECT" in supabase_url:
+        supabase_url = "https://ywxuyhdvcvfqayckertu.supabase.co"
+
+    service_role_key = (settings.supabase_service_role_key or "").strip()
+    if not service_role_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not configured.",
+        )
+
     # 1. Create user in Supabase
     headers = {
-        "apikey": settings.supabase_service_role_key,
-        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": service_role_key,
+        "Authorization": f"Bearer {service_role_key}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -83,13 +94,32 @@ def register_user(db: Session, data: Union[StudentRegistrationRequest, LecturerR
             "username": data.email.split('@')[0],
         },
     }
-    res = httpx.post(
-        f"{settings.supabase_url}/auth/v1/admin/users",
-        headers=headers,
-        json=payload,
-    )
+    try:
+        res = httpx.post(
+            f"{supabase_url}/auth/v1/admin/users",
+            headers=headers,
+            json=payload,
+            timeout=15.0,
+        )
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to connect to Supabase Auth at '{supabase_url}': DNS or connection failed ({exc}). Check SUPABASE_URL and DNS configuration.",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"HTTP request to Supabase Auth at '{supabase_url}' failed: {exc}",
+        )
+
     if res.status_code not in (200, 201):
-        raise HTTPException(status_code=res.status_code, detail=res.json().get("message", "Failed to create user in Supabase"))
+        err_msg = "Failed to create user in Supabase"
+        try:
+            err_json = res.json()
+            err_msg = err_json.get("message") or err_json.get("msg") or err_json.get("error_description") or str(err_json)
+        except Exception:
+            err_msg = res.text or err_msg
+        raise HTTPException(status_code=res.status_code, detail=f"Supabase error: {err_msg}")
     
     supabase_user = res.json()
     new_user_id = UUID(supabase_user["id"])
