@@ -18,7 +18,7 @@ class RegisterFaceRequest(BaseModel):
         ...,
         min_length=512,
         max_length=512,
-        description="512-dimensional centroid FaceNet embedding vector",
+        description="512-dimensional FaceNet embedding vector",
     )
     pose_embeddings: Optional[List[List[float]]] = Field(
         default=None,

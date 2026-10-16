@@ -1,14 +1,15 @@
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
 # Install shared-core first
 COPY libs/shared-core /shared-core
-RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 /shared-core
+RUN uv pip install --system --no-cache /shared-core
 
 # Install service dependencies
 COPY services/ai-vision-service/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/pip pip install --default-timeout=1000 .
+RUN uv pip install --system --no-cache .
 
 COPY services/ai-vision-service/app ./app
 

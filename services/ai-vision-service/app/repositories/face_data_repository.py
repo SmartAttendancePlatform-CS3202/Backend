@@ -39,21 +39,3 @@ def save_embedding(
     db.refresh(obj)
     return obj
 
-
-def update_centroid(
-    db: Session,
-    profile_id: UUID,
-    new_centroid: list[float],
-    metadata_update: dict | None = None,
-):
-    profile = db.query(FaceProfile).filter(FaceProfile.id == profile_id).first()
-    if profile:
-        profile.embedding = new_centroid
-        if metadata_update:
-            meta = dict(profile.enrollment_metadata or {})
-            meta.update(metadata_update)
-            profile.enrollment_metadata = meta
-        db.commit()
-        db.refresh(profile)
-    return profile
-

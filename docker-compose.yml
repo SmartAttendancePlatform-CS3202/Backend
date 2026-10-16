@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: services/scheduling-service/Dockerfile
+      network: host
     env_file: [services/scheduling-service/.env]
     environment:
       SERVICE_NAME: scheduling-service
@@ -16,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: services/attendance-service/Dockerfile
+      network: host
     env_file: [services/attendance-service/.env]
     environment:
       SCHEDULING_SERVICE_URL: http://scheduling-service:8000
@@ -37,6 +39,7 @@ services:
     build:
       context: .
       dockerfile: services/ai-vision-service/Dockerfile
+      network: host
     env_file: [services/ai-vision-service/.env]
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
