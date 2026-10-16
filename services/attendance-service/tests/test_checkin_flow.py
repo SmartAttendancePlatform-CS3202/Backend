@@ -156,6 +156,39 @@ async def test_record_random_check_before_initial_check():
         assert "attempt_id" in res
 
 
+@pytest.mark.anyio
+async def test_record_random_check_rejected_when_class_ended():
+    from fastapi import HTTPException
+    from datetime import datetime, timezone, timedelta
+
+    db = MagicMock()
+    student_id = uuid4()
+    session_id = uuid4()
+    window_id = uuid4()
+
+    mock_session = MagicMock()
+    mock_session.id = session_id
+    mock_session.status = "completed"
+    mock_session.scheduled_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    mock_session.duration_mins = 60
+
+    payload = RandomCheckRequest(
+        lecture_session_id=session_id,
+        verification_window_id=window_id,
+        latitude=0.0,
+        longitude=0.0,
+    )
+
+    with patch(
+        "app.services.attendance_service._assert_student_enrolled",
+        return_value=mock_session,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await record_random_check(db, student_id, payload)
+        assert exc_info.value.status_code == 400
+        assert "Class time has ended" in exc_info.value.detail
+
+
 def test_onboarding_register_face_calls_ai_vision_client():
     db = MagicMock()
     student_user = MagicMock(spec=User)
