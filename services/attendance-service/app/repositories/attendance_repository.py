@@ -139,6 +139,29 @@ def schedule_random_window(db: Session, session: LectureSession, window_minutes:
     db.add(obj); db.commit(); db.refresh(obj); return obj
 
 
+def close_random_window(db: Session, session_id: UUID):
+    now = datetime.now(timezone.utc)
+    windows = (
+        db.query(VerificationWindow)
+        .filter(
+            VerificationWindow.lecture_session_id == session_id,
+            cast(VerificationWindow.window_type, String) == WindowType.random_check.value,
+            VerificationWindow.is_active.is_(True),
+        )
+        .all()
+    )
+    last_window = None
+    for window in windows:
+        window.is_active = False
+        window.actual_closed_at = now
+        last_window = window
+    if windows:
+        db.commit()
+        for w in windows:
+            db.refresh(w)
+    return last_window
+
+
 def close_session(db: Session, session_id: UUID):
     session = get_session(db, session_id)
     if not session: return None

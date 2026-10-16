@@ -343,6 +343,22 @@ def trigger_random_window(db: Session, session_id: UUID, current_user):
     return attendance_repository.schedule_random_window(db, session, window_minutes=session.course_offering.random_check_window_minutes or 10)
 
 
+def close_random_window(db: Session, session_id: UUID, current_user):
+    session = attendance_repository.get_session(db, session_id)
+    if not session:
+        raise HTTPException(404, "Lecture session not found")
+    if str(getattr(current_user.role, "value", current_user.role)) == "lecturer" and session.course_offering.lecturer_id != current_user.id:
+        raise HTTPException(403, "You are not assigned to this offering")
+    
+    window = attendance_repository.close_random_window(db, session_id)
+    if not window:
+        closed_window = next((w for w in session.verification_windows if getattr(w.window_type, "value", w.window_type) == "random_check"), None)
+        if closed_window:
+            return closed_window
+        raise HTTPException(404, "No active random verification window found for this session")
+    return window
+
+
 def end_session(db: Session, session_id: UUID, current_user):
     session = attendance_repository.get_session(db, session_id)
     if not session: return None

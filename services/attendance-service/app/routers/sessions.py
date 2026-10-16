@@ -66,6 +66,17 @@ def trigger_random_window(id: UUID, current_user: User = Depends(require_role("l
     window = attendance_service.trigger_random_window(db, id, current_user)
     return {"message": "Random window triggered successfully", "window_id": window.id}
 
+@router.post("/{id}/windows/random/close")
+def close_random_window(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
+    window = attendance_service.close_random_window(db, id, current_user)
+    return {"message": "Random window closed successfully", "window_id": window.id}
+
+@router.post("/{id}/windows/random/end")
+def end_random_window(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
+    window = attendance_service.close_random_window(db, id, current_user)
+    return {"message": "Random window closed successfully", "window_id": window.id}
+
+
 @router.get("/{id}/live")
 def live(id: UUID, current_user: User = Depends(require_role("lecturer", "admin")), db: Session = Depends(get_db)):
     session = attendance_service.get_session(db, id)
