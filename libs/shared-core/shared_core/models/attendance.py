@@ -141,6 +141,38 @@ class AttendanceRecord(Base):
         if not self.overrider: return None
         return self.overrider.username
 
+    @property
+    def session_number(self):
+        return self.lecture_session.session_number if self.lecture_session else None
+
+    @property
+    def course_code(self):
+        if self.lecture_session and self.lecture_session.course_offering and self.lecture_session.course_offering.course:
+            return self.lecture_session.course_offering.course.course_code
+        return None
+
+    @property
+    def course_name(self):
+        if self.lecture_session and self.lecture_session.course_offering and self.lecture_session.course_offering.course:
+            return self.lecture_session.course_offering.course.name
+        return None
+
+    @property
+    def lecture_name(self):
+        if not self.lecture_session:
+            return None
+        num = self.lecture_session.session_number
+        notes = (self.lecture_session.notes or "").strip()
+        if notes:
+            return f"Lecture {num}: {notes}"
+        return f"Lecture {num}"
+
+    @property
+    def held_at(self):
+        if self.lecture_session:
+            return self.lecture_session.held_at or self.lecture_session.scheduled_at
+        return self.first_check_in_at or self.created_at
+
 
 class AttendanceVerificationAttempt(Base):
     __tablename__ = "attendance_verification_attempts"

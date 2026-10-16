@@ -200,7 +200,16 @@ def find_attempt(db: Session, attempt_id: UUID):
 
 
 def get_attendance_records(db: Session, session_id=None, student_id=None):
-    q = db.query(AttendanceRecord).order_by(AttendanceRecord.created_at.desc())
+    q = (
+        db.query(AttendanceRecord)
+        .options(
+            joinedload(AttendanceRecord.lecture_session)
+            .joinedload(LectureSession.course_offering)
+            .joinedload(CourseOffering.course),
+            joinedload(AttendanceRecord.student)
+        )
+        .order_by(AttendanceRecord.created_at.desc())
+    )
     if session_id: q = q.filter(AttendanceRecord.lecture_session_id == session_id)
     if student_id: q = q.filter(AttendanceRecord.student_id == student_id)
     return q.all()

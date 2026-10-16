@@ -73,6 +73,11 @@ class AttendanceRecordOut(BaseModel):
     student_index: Optional[str] = None
     student_photo: Optional[str] = None
     override_by_name: Optional[str] = None
+    session_number: Optional[int] = None
+    course_code: Optional[str] = None
+    course_name: Optional[str] = None
+    lecture_name: Optional[str] = None
+    held_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
