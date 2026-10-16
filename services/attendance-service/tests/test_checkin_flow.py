@@ -50,8 +50,14 @@ async def test_record_random_check_success():
     mock_session.status = "ongoing"
     mock_session.scheduled_at = datetime.now(timezone.utc)
     mock_session.duration_mins = 60
+    mock_session.course_offering = MagicMock(late_threshold_minutes=10)
     mock_window = MagicMock()
     mock_window.id = window_id
+
+    mock_record = MagicMock()
+    mock_record.first_check_in_at = datetime.now(timezone.utc)
+    mock_record.is_manually_overridden = False
+    mock_record.status = MagicMock(value="present")
 
     payload = RandomCheckRequest(
         lecture_session_id=session_id,
@@ -68,8 +74,14 @@ async def test_record_random_check_success():
         "app.repositories.attendance_repository.get_open_window",
         return_value=mock_window,
     ), patch(
+        "app.repositories.attendance_repository.get_attendance_record",
+        return_value=mock_record,
+    ), patch(
+        "app.services.attendance_service._match_student_face",
+        return_value=(True, 0.95, 0.70, None, False),
+    ), patch(
         "app.services.attendance_service._venue_check",
-        return_value=({"inside": True, "distance_m": 10.0}, 10.0),
+        return_value=({"inside": True, "distance_meters": 10.0}, {"name": "Test Venue"}),
     ):
         res = await record_random_check(db, student_id, payload)
         assert res["status"] == "success"

@@ -148,23 +148,32 @@ def _venue_check(session, latitude, longitude):
                 "boundary_data": db_venue.boundary_data,
             }
         else:
-            venue = {
-                "id": str(venue_id),
-                "name": "Lecture Hall",
-                "building": "Campus",
-                "shape_type": "circle",
-                "boundary_data": {"latitude": 6.7951, "longitude": 79.9009, "radius_meters": 30.0},
-            }
-    shape_type = str(venue.get("shape_type") or "circle")
-    boundary_data = venue.get("boundary_data") if isinstance(venue.get("boundary_data"), dict) else {}
-    result = geofence_check(latitude, longitude, shape_type, boundary_data)
+            raise HTTPException(404, "Venue boundary data or geofence not configured")
+    result = geofence_check(latitude, longitude, venue["shape_type"], venue["boundary_data"])
     return result, venue
 
 
 def start_session(db: Session, data: dict, current_user):
     offering = scheduling_client.get_offering(data["course_offering_id"])
-    if str(getattr(current_user.role, "value", current_user.role)) == "lecturer" and UUID(offering["lecturer_id"]) != current_user.id:
+    lecturer_id = UUID(offering["lecturer_id"])
+    if str(getattr(current_user.role, "value", current_user.role)) == "lecturer" and lecturer_id != current_user.id:
         raise HTTPException(403, "You are not assigned to this offering")
+
+    active_lecturer_session = (
+        db.query(LectureSession)
+        .join(CourseOffering, LectureSession.course_offering_id == CourseOffering.id)
+        .filter(
+            CourseOffering.lecturer_id == lecturer_id,
+            LectureSession.status == SessionStatus.ongoing,
+        )
+        .first()
+    )
+    if active_lecturer_session:
+        raise HTTPException(
+            409,
+            "Cannot start session: Lecturer already has an ongoing lecture session in progress. Please end the active session first."
+        )
+
     session = attendance_repository.create_session(db, data)
     _ensure_check_in_window(db, session)
     return session
@@ -315,12 +324,20 @@ def trigger_random_window(db: Session, session_id: UUID, current_user):
     _sync_session_state(db, session)
     if str(getattr(current_user.role, "value", current_user.role)) == "lecturer" and session.course_offering.lecturer_id != current_user.id:
         raise HTTPException(403, "You are not assigned to this offering")
-    if getattr(session.status, "value", session.status) != "ongoing":
-        raise HTTPException(400, "Session is not ongoing")
+    status_str = getattr(session.status, "value", session.status)
+    if status_str in {"completed", "cancelled"}:
+        raise HTTPException(400, f"Cannot trigger random check: Session is {status_str}")
+    if status_str == "scheduled":
+        session.status = SessionStatus.ongoing
+        if not session.held_at:
+            session.held_at = datetime.now(timezone.utc)
+        db.commit()
     
     # Check if a random window already exists for this session
     existing_window = next((w for w in session.verification_windows if getattr(w.window_type, "value", w.window_type) == "random_check"), None)
-    if existing_window:
+    if existing_window and existing_window.is_active:
+        return existing_window
+    elif existing_window:
         raise HTTPException(400, "A random check-in window has already been triggered for this session")
         
     return attendance_repository.schedule_random_window(db, session, window_minutes=session.course_offering.random_check_window_minutes or 10)
@@ -415,30 +432,6 @@ def get_session_windows(db: Session, lecture_session_id: UUID):
 def verify_location_precheck(db: Session, student_id: UUID, payload):
     now = datetime.now(timezone.utc)
     session_id_str = str(payload.lecture_session_id)
-    is_test_class = (session_id_str == "TEST_MOCK_CLASS")
-
-    if is_test_class:
-        if payload.latitude is None or payload.longitude is None:
-            return {
-                "success": False,
-                "inside": False,
-                "distance_meters": None,
-                "radius_meters": 30.0,
-                "venue_name": "CSE Seminar Room",
-                "message": "Missing GPS coordinates",
-            }
-        dist = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
-        radius = 30.0
-        inside = dist <= radius
-        return {
-            "success": True,
-            "inside": inside,
-            "distance_meters": round(dist, 2),
-            "radius_meters": radius,
-            "venue_name": "CSE Seminar Room",
-            "lecture_session_id": "TEST_MOCK_CLASS",
-            "message": "Within geofence" if inside else f"Outside geofence ({round(dist)}m away, must be <= {round(radius)}m)",
-        }
 
     try:
         session_uuid = UUID(session_id_str)
@@ -525,39 +518,203 @@ async def record_check_in(db: Session, student_id: UUID, payload):
     return {"status": "processing", "attempt_id": attempt_id}
 
 
+def _match_student_face(
+    db: Session,
+    student_id: UUID,
+    face_embedding: list[float],
+    live_depth: list[float] | None = None,
+) -> tuple[bool, float, float, str | None, bool]:
+    """
+    Matches live face embedding against registered student profile.
+    Returns: (is_match, confidence, threshold, message, requires_re_registration)
+    """
+    threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", "0.70"))
+
+    # 1. Fetch active face profile
+    profile = db.query(FaceProfile).filter(
+        FaceProfile.student_id == student_id,
+        FaceProfile.is_active.is_(True),
+    ).first()
+
+    if not profile:
+        return False, 0.0, threshold, "No active face biometric profile registered for student. Please complete face registration first.", False
+
+    # 2. Try AI Vision microservice
+    match_result = None
+    try:
+        match_result = ai_vision_client.verify_face(
+            str(student_id),
+            face_embedding,
+            depth_features=live_depth,
+        )
+    except Exception:
+        pass
+
+    if match_result and ("is_match" in match_result or "requires_re_registration" in match_result):
+        if match_result.get("requires_re_registration"):
+            return False, 0.0, threshold, match_result.get("message", "Face profile was enrolled with an outdated model version. Please re-register your face profile."), True
+        is_match = bool(match_result.get("is_match"))
+        confidence = float(match_result.get("confidence", 0.0))
+        msg = None if is_match else f"Biometric mismatch ({round(confidence * 100, 1)}%)"
+        return is_match, confidence, threshold, msg, False
+
+    # Fallback: direct vector computation
+    enrollment_version_raw = getattr(profile, "enrollment_version", 4)
+    try:
+        if isinstance(enrollment_version_raw, (int, float, str)):
+            enrollment_version = int(enrollment_version_raw)
+        else:
+            enrollment_version = 4
+    except (ValueError, TypeError):
+        enrollment_version = 4
+
+    if enrollment_version < 4:
+        return False, 0.0, threshold, "Face profile was enrolled with an outdated model version. Please re-register your face profile in settings.", True
+
+    norm_ref = math.sqrt(sum(float(x) * float(x) for x in profile.embedding))
+    norm_live = math.sqrt(sum(float(x) * float(x) for x in face_embedding))
+    if norm_ref == 0.0 or norm_live == 0.0:
+        confidence = 0.0
+    else:
+        dot_prod = sum(float(a) * float(b) for a, b in zip(profile.embedding, face_embedding))
+        centroid_sim = float(dot_prod / (norm_ref * norm_live))
+        centroid_sim = max(-1.0, min(1.0, centroid_sim))
+
+        stored_poses = getattr(profile, "pose_embeddings", None)
+        best_pose_sim = None
+        if isinstance(stored_poses, list) and len(stored_poses) > 0:
+            sims = []
+            for p in stored_poses:
+                if isinstance(p, list) and len(p) == 512:
+                    p_norm = math.sqrt(sum(float(x) * float(x) for x in p))
+                    if p_norm > 0:
+                        p_dot = sum(float(a) * float(b) for a, b in zip(p, face_embedding))
+                        s = float(p_dot / (p_norm * norm_live))
+                        sims.append(max(-1.0, min(1.0, s)))
+            if sims:
+                best_pose_sim = max(sims)
+
+        if best_pose_sim is not None:
+            confidence = max(centroid_sim, best_pose_sim)
+        else:
+            confidence = centroid_sim
+
+    # Anti-spoof topological gate: depth feature similarity if available
+    stored_depth = getattr(profile, "depth_features", None)
+    if live_depth is not None and stored_depth is not None:
+        if isinstance(stored_depth, list) and len(stored_depth) == len(live_depth):
+            norm_d_ref = math.sqrt(sum(float(x) * float(x) for x in stored_depth))
+            norm_d_live = math.sqrt(sum(float(x) * float(x) for x in live_depth))
+            if norm_d_ref > 0 and norm_d_live > 0:
+                d_dot = sum(float(a) * float(b) for a, b in zip(stored_depth, live_depth))
+                depth_sim = max(-1.0, min(1.0, float(d_dot / (norm_d_ref * norm_d_live))))
+                if depth_sim < 0.40:
+                    return False, round(confidence, 4), threshold, "Face verification failed: Liveness and surface topology check failed (possible spoof).", False
+
+    is_match = confidence >= threshold
+    msg = None if is_match else f"Biometric mismatch with registered profile ({round(confidence * 100, 1)}% similarity, requires {int(threshold * 100)}%)."
+    return is_match, confidence, threshold, msg, False
+
+
 async def record_random_check(db: Session, student_id: UUID, payload):
+    now = datetime.now(timezone.utc)
+    attempt_id = uuid4()
     session = _assert_student_enrolled(db, student_id, payload.lecture_session_id)
     _sync_session_state(db, session)
     active = attendance_repository.get_open_window(db, session.id, "random_check")
     if not active or active.id != payload.verification_window_id:
         raise HTTPException(400, "No active random verification window")
-    geo, _ = _venue_check(session, payload.latitude, payload.longitude)
-    attempt_id = uuid4()
-    if not geo["inside"]:
+
+    # Dual verification requirement: Student MUST have completed initial check-in first!
+    record = attendance_repository.get_attendance_record(db, session.id, student_id)
+    if not record or not record.first_check_in_at:
+        raise HTTPException(400, "Initial check-in is required before completing random verification.")
+
+    # 1. Location verification
+    geo, venue = _venue_check(session, payload.latitude, payload.longitude)
+    geo_inside = bool(geo.get("inside"))
+    dist_m = geo.get("distance_meters")
+
+    # 2. Face verification
+    face_emb = getattr(payload, "face_embedding", None)
+    if not face_emb or len(face_emb) != 512:
         attendance_repository.log_attempt(db, {
             "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-            "used_face_verification": False, "used_location_check": True, "location_method": "gps_geofence",
-            "latitude": payload.latitude, "longitude": payload.longitude,
-            "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.failed,
-            "failure_reason": "Outside geofence",
+            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+            "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
+            "distance_from_venue_meters": dist_m, "status": AttemptStatus.failed,
+            "failure_reason": "Missing or invalid face embedding", "attempted_at": now,
         })
-        return {"status": "rejected", "attempt_id": attempt_id, "reason": "outside_geofence"}
+        return {
+            "status": "rejected", "attempt_id": str(attempt_id),
+            "reason": "missing_face_embedding",
+            "message": "Face verification is required for random check.",
+        }
 
+    live_depth = getattr(payload, "depth_features", None)
+    is_match, confidence, threshold, face_err, requires_re_reg = _match_student_face(
+        db, student_id, face_emb, live_depth
+    )
+
+    if not geo_inside:
+        attendance_repository.log_attempt(db, {
+            "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
+            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+            "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
+            "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
+            "status": AttemptStatus.failed, "failure_reason": f"Outside geofence ({round(dist_m or 0)}m away)",
+            "attempted_at": now,
+        })
+        return {
+            "status": "rejected", "attempt_id": str(attempt_id),
+            "reason": "outside_geofence",
+            "distance_meters": round(dist_m, 2) if dist_m is not None else None,
+            "message": f"Location verification failed: Outside geofence ({round(dist_m or 0)}m away). Attendance not marked.",
+        }
+
+    if requires_re_reg or not is_match:
+        attendance_repository.log_attempt(db, {
+            "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
+            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+            "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
+            "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
+            "status": AttemptStatus.failed, "failure_reason": face_err or "Face mismatch",
+            "attempted_at": now,
+        })
+        return {
+            "status": "rejected", "attempt_id": str(attempt_id),
+            "reason": "face_mismatch",
+            "confidence": round(confidence, 4), "threshold": threshold,
+            "message": face_err or "Face verification failed. Attendance not marked.",
+        }
+
+    # BOTH location and face verification passed!
     attendance_repository.log_attempt(db, {
         "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-        "used_face_verification": False, "used_location_check": True, "location_method": "gps_geofence",
-        "latitude": payload.latitude, "longitude": payload.longitude,
-        "distance_from_venue_meters": geo.get("distance_meters"), "status": AttemptStatus.success,
-        "attempted_at": datetime.now(timezone.utc),
+        "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+        "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
+        "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
+        "status": AttemptStatus.success, "attempted_at": now,
     })
-    
-    # Update random check completed at
-    record = attendance_repository.get_attendance_record(db, session.id, student_id)
-    if record:
-        record.random_check_completed_at = datetime.now(timezone.utc)
-        db.commit()
-        
-    return {"status": "success", "attempt_id": attempt_id}
+
+    # Finalize attendance record: student has verified both initial and random check!
+    record.random_check_completed_at = now
+    if not record.is_manually_overridden:
+        late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
+        is_late = record.first_check_in_at > session.scheduled_at + timedelta(minutes=late_threshold)
+        record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
+        record.flag_reason = None
+    db.commit()
+    db.refresh(record)
+
+    return {
+        "status": "success",
+        "attendance_status": record.status.value,
+        "attempt_id": str(attempt_id),
+        "distance_meters": round(dist_m, 2) if dist_m is not None else None,
+        "face_match_confidence": round(confidence, 4),
+        "message": "Both initial check-in and random check verified (Face + Location). Attendance successfully marked as present.",
+    }
 
 
 def get_student_attendance(db, student_id): return attendance_repository.get_attendance_records(db, student_id=student_id)
@@ -599,131 +756,37 @@ def override_record(db: Session, record_id: UUID, user_id: UUID, override_data: 
 def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
     now = datetime.now(timezone.utc)
     attempt_id = uuid4()
+    live_depth = getattr(payload, "depth_features", None)
 
-    # 1. Fetch active face profile from database
-    profile = db.query(FaceProfile).filter(
-        FaceProfile.student_id == student_id,
-        FaceProfile.is_active.is_(True)
-    ).first()
+    # 1. Biometric face matching
+    is_match, confidence, threshold, face_err, requires_re_reg = _match_student_face(
+        db, student_id, payload.face_embedding, live_depth
+    )
 
-    if not profile:
+    if face_err and "No active face biometric profile" in face_err:
         return {
             "success": False,
             "is_match": False,
             "confidence": 0.0,
-            "threshold": 0.70,
-            "message": "No active face biometric profile registered for student. Please complete face registration first.",
+            "threshold": threshold,
+            "message": face_err,
         }
 
-    # 2. Perform biometric matching (via AI Vision microservice or direct vector similarity)
-    threshold = float(os.environ.get("FACE_SIMILARITY_THRESHOLD", "0.70"))
-    match_result = None
-    live_depth = getattr(payload, "depth_features", None)
-    try:
-        match_result = ai_vision_client.verify_face(
-            str(student_id),
-            payload.face_embedding,
-            depth_features=live_depth,
-        )
-    except Exception:
-        # Fallback to direct in-memory cosine similarity against stored DB profile
-        pass
+    if requires_re_reg:
+        return {
+            "success": False,
+            "is_match": False,
+            "confidence": 0.0,
+            "threshold": threshold,
+            "requires_re_registration": True,
+            "message": face_err or "Face profile was enrolled with an outdated model version. Please re-register your face profile.",
+        }
 
-    if match_result and ("is_match" in match_result or "requires_re_registration" in match_result):
-        if match_result.get("requires_re_registration"):
-            return {
-                "success": False,
-                "is_match": False,
-                "confidence": 0.0,
-                "threshold": threshold,
-                "requires_re_registration": True,
-                "message": match_result.get(
-                    "message",
-                    "Face profile was enrolled with an outdated model version. Please re-register your face profile.",
-                ),
-            }
-        is_match = bool(match_result.get("is_match"))
-        confidence = float(match_result.get("confidence", 0.0))
-    else:
-        # Check enrollment version on fallback
-        enrollment_version_raw = getattr(profile, "enrollment_version", 4)
-        try:
-            if isinstance(enrollment_version_raw, (int, float, str)):
-                enrollment_version = int(enrollment_version_raw)
-            else:
-                enrollment_version = 4
-        except (ValueError, TypeError):
-            enrollment_version = 4
-
-        if enrollment_version < 4:
-            return {
-                "success": False,
-                "is_match": False,
-                "confidence": 0.0,
-                "threshold": threshold,
-                "requires_re_registration": True,
-                "message": (
-                    "Face profile was enrolled with an outdated model version. "
-                    "Please re-register your face profile in settings."
-                ),
-            }
-
-        # Direct DB computation using stored vector(512)
-        norm_ref = math.sqrt(sum(float(x) * float(x) for x in profile.embedding))
-        norm_live = math.sqrt(sum(float(x) * float(x) for x in payload.face_embedding))
-        if norm_ref == 0.0 or norm_live == 0.0:
-            confidence = 0.0
-        else:
-            dot_prod = sum(float(a) * float(b) for a, b in zip(profile.embedding, payload.face_embedding))
-            centroid_sim = float(dot_prod / (norm_ref * norm_live))
-            centroid_sim = max(-1.0, min(1.0, centroid_sim))
-
-            stored_poses = getattr(profile, "pose_embeddings", None)
-            best_pose_sim = None
-            if isinstance(stored_poses, list) and len(stored_poses) > 0:
-                sims = []
-                for p in stored_poses:
-                    if isinstance(p, list) and len(p) == 512:
-                        p_norm = math.sqrt(sum(float(x) * float(x) for x in p))
-                        if p_norm > 0:
-                            p_dot = sum(float(a) * float(b) for a, b in zip(p, payload.face_embedding))
-                            s = float(p_dot / (p_norm * norm_live))
-                            sims.append(max(-1.0, min(1.0, s)))
-                if sims:
-                    best_pose_sim = max(sims)
-
-            if best_pose_sim is not None:
-                confidence = max(centroid_sim, best_pose_sim)
-            else:
-                confidence = centroid_sim
-
-        # Anti-spoof topological gate: depth feature similarity if available
-        stored_depth = getattr(profile, "depth_features", None)
-        if live_depth is not None and stored_depth is not None:
-            if isinstance(stored_depth, list) and len(stored_depth) == len(live_depth):
-                norm_d_ref = math.sqrt(sum(float(x) * float(x) for x in stored_depth))
-                norm_d_live = math.sqrt(sum(float(x) * float(x) for x in live_depth))
-                if norm_d_ref > 0 and norm_d_live > 0:
-                    d_dot = sum(float(a) * float(b) for a, b in zip(stored_depth, live_depth))
-                    depth_sim = max(-1.0, min(1.0, float(d_dot / (norm_d_ref * norm_d_live))))
-                    if depth_sim < 0.40:
-                        return {
-                            "success": False,
-                            "is_match": False,
-                            "confidence": round(confidence, 4),
-                            "threshold": threshold,
-                            "message": "Face verification failed: Liveness and surface topology check failed (possible spoof).",
-                        }
-
-        is_match = confidence >= threshold
-
-    # 3. Handle session attendance recording and verification attempts
+    # 2. Session and window resolution
     session_id_str = str(payload.lecture_session_id) if payload.lecture_session_id else ""
-    is_test_class = (session_id_str == "TEST_MOCK_CLASS")
-
     window_id = None
     session = None
-    if not is_test_class and session_id_str:
+    if session_id_str:
         try:
             session_uuid = UUID(session_id_str)
             session = resolve_session(db, session_uuid, student_id=student_id, now=now)
@@ -736,21 +799,12 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         except Exception:
             pass
 
-    # Geofence enforcement
+    # 3. Geofence enforcement
     geo_inside = True
     distance_m = None
     geo_failure_reason = None
 
-    if is_test_class:
-        if payload.latitude is None or payload.longitude is None:
-            geo_inside = False
-            geo_failure_reason = "Missing GPS coordinates"
-        else:
-            distance_m = calculate_distance(payload.latitude, payload.longitude, 6.7951, 79.9009)
-            geo_inside = distance_m <= 30.0
-            if not geo_inside:
-                geo_failure_reason = "Outside 30m geofence"
-    elif session:
+    if session:
         if payload.latitude is None or payload.longitude is None:
             geo_inside = False
             geo_failure_reason = "Missing GPS coordinates"
@@ -764,6 +818,9 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             except Exception as exc:
                 geo_inside = False
                 geo_failure_reason = f"Venue geofence error: {exc}"
+    elif session_id_str:
+        geo_inside = False
+        geo_failure_reason = "Lecture session not found"
 
     # Determine overall verification status
     overall_success = is_match and geo_inside
@@ -772,7 +829,7 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
     if not geo_inside:
         attempt_failure = geo_failure_reason
     elif not is_match:
-        attempt_failure = "Face mismatch"
+        attempt_failure = face_err or "Face mismatch"
 
     # Log verification attempt in database if window exists
     if window_id:
@@ -804,8 +861,25 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             "message": f"Location verification failed: {geo_failure_reason}. Attendance not recorded.",
         }
 
-    # 4. If face match AND location inside geofence AND real lecture session, record attendance
-    if is_match and session:
+    if not is_match:
+        face_failure_msg = face_err or f"Biometric mismatch with registered profile ({round(confidence * 100, 1)}% similarity, requires {int(threshold * 100)}%)."
+        if not face_failure_msg.startswith("Face verification failed:"):
+            face_failure_msg = f"Face verification failed: {face_failure_msg}"
+        return {
+            "success": False,
+            "is_match": False,
+            "confidence": round(confidence, 4),
+            "threshold": threshold,
+            "message": face_failure_msg,
+        }
+
+    # 4. If face match AND location inside geofence AND session exists:
+    random_check_enabled = True
+    if session and session.course_offering:
+        random_check_enabled = bool(getattr(session.course_offering, "random_check_enabled", True))
+
+    is_late = False
+    if session:
         record = attendance_repository.get_attendance_record(db, session.id, student_id)
         if not record:
             record = AttendanceRecord(
@@ -816,17 +890,30 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             db.add(record)
         record.first_check_in_at = now
         late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
-        status_val = AttendanceStatus.late if now > session.scheduled_at + timedelta(minutes=late_threshold) else AttendanceStatus.present
-        record.status = status_val
+        is_late = now > session.scheduled_at + timedelta(minutes=late_threshold)
+
+        if not record.is_manually_overridden:
+            if random_check_enabled:
+                # Dual verification: Initial check-in recorded, but attendance status remains absent
+                # until random verification is completed!
+                record.status = AttendanceStatus.absent
+            else:
+                record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
+
         db.commit()
 
-    if not is_match:
+    if random_check_enabled:
         return {
-            "success": False,
-            "is_match": False,
+            "success": True,
+            "is_match": True,
             "confidence": round(confidence, 4),
             "threshold": threshold,
-            "message": f"Face verification failed: Biometric mismatch with registered profile ({round(confidence * 100, 1)}% similarity, requires {int(threshold * 100)}%).",
+            "attempt_id": str(attempt_id),
+            "distance_meters": round(distance_m, 2) if distance_m is not None else None,
+            "verified_initial": True,
+            "attendance_marked": False,
+            "status": "pending_random_check",
+            "message": "Initial check-in verified successfully (Face + Location verified). Mid-session random verification is required to complete attendance.",
         }
 
     return {
@@ -836,5 +923,8 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         "threshold": threshold,
         "attempt_id": str(attempt_id),
         "distance_meters": round(distance_m, 2) if distance_m is not None else None,
+        "verified_initial": True,
+        "attendance_marked": True,
+        "status": AttendanceStatus.late.value if is_late else AttendanceStatus.present.value,
         "message": "Face verified successfully within lecture hall geofence. Attendance recorded.",
     }
