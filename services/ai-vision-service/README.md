@@ -5,7 +5,7 @@ PID 12 / Group 24's Smart Attendance and Classroom Access Platform.
 
 ## Architecture
 
-- **Edge-First Embedding**: Mobile clients execute on-device liveness verification and extract 512-dimensional embeddings via FaceNet 512 (`react-native-fast-tflite`).
+- **Edge-First Embedding**: Mobile clients execute on-device liveness verification and extract 512-dimensional embeddings via FaceNet (`react-native-fast-tflite`).
 - **No Server-Side Image Generation**: The backend performs zero neural network inference on raw images, eliminating heavy ML frameworks (DeepFace, OpenCV, TensorFlow).
 - **In-Memory Cosine Similarity**: Normalized dot products are computed in Python via NumPy with sub-millisecond latency.
 - **Data Ownership**: Exclusively owns `face_profiles` (`vector(512)` pgvector embeddings).
