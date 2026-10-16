@@ -207,6 +207,8 @@ def get_or_create_scheduled_session(db: Session, offering_id: UUID, current_user
     status = _session_status_for(now, start_at, end_at)
     if existing:
         session = _sync_session_state(db, existing, now)
+        if getattr(session.status, "value", session.status) in {"completed", "cancelled"}:
+            return None
     else:
         session = attendance_repository.create_scheduled_session(db, {
             "course_offering_id": offering.id,
@@ -218,11 +220,27 @@ def get_or_create_scheduled_session(db: Session, offering_id: UUID, current_user
         }, status)
     _ensure_check_in_window(db, session)
     attendance_repository.ensure_session_roster(db, session)
+    if getattr(session.status, "value", session.status) in {"completed", "cancelled"}:
+        return None
     return session
 
 
 def get_active_scheduled_sessions(db: Session, current_user, offering_id: UUID | None = None):
+    now = datetime.now(timezone.utc)
     role = str(getattr(current_user.role, "value", current_user.role))
+
+    # Sync any ongoing sessions in the DB whose scheduled time has passed
+    ongoing_sessions = (
+        db.query(LectureSession)
+        .filter(LectureSession.status == SessionStatus.ongoing)
+        .all()
+    )
+    for s in ongoing_sessions:
+        start_at = _as_utc(s.scheduled_at)
+        end_at = start_at + timedelta(minutes=s.duration_mins)
+        if now > end_at:
+            _sync_session_state(db, s, now)
+
     q = db.query(CourseOffering).filter(CourseOffering.is_active.is_(True))
     if offering_id:
         q = q.filter(CourseOffering.id == offering_id)
@@ -230,11 +248,24 @@ def get_active_scheduled_sessions(db: Session, current_user, offering_id: UUID |
         q = q.filter(CourseOffering.lecturer_id == current_user.id)
     elif role == "student":
         q = q.filter(CourseOffering.enrollments.any(student_id=current_user.id, is_active=True))
+
     sessions = []
+    seen_offering_ids = set()
     for offering in q.all():
-        session = get_or_create_scheduled_session(db, offering.id, current_user)
-        if session:
-            sessions.append(session)
+        session = get_or_create_scheduled_session(db, offering.id, current_user, now=now)
+        if session and getattr(session.status, "value", session.status) in {"scheduled", "ongoing"}:
+            start_at = _as_utc(session.scheduled_at)
+            end_at = start_at + timedelta(minutes=session.duration_mins)
+            open_at = start_at - timedelta(minutes=ATTENDANCE_EARLY_MINUTES)
+            if open_at <= now <= end_at and offering.id not in seen_offering_ids:
+                seen_offering_ids.add(offering.id)
+                sessions.append(session)
+
+    # For a lecturer, only return 1 active session at any given moment
+    if role == "lecturer" and len(sessions) > 1:
+        sessions.sort(key=lambda s: s.scheduled_at, reverse=True)
+        return [sessions[0]]
+
     return sessions
 
 
