@@ -643,6 +643,12 @@ async def record_random_check(db: Session, student_id: UUID, payload):
 
     session = _assert_student_enrolled(db, student_id, session_uuid)
     _sync_session_state(db, session)
+
+    start_at = _as_utc(session.scheduled_at)
+    end_at = start_at + timedelta(minutes=session.duration_mins)
+    if now >= end_at or getattr(session.status, "value", session.status) in {"completed", "cancelled"}:
+        raise HTTPException(400, "Class time has ended. Random verification is closed.")
+
     active = attendance_repository.get_open_window(db, session.id, "random_check")
 
     if payload.verification_window_id:
