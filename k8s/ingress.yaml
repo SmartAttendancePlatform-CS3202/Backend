@@ -8,8 +8,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: attendance.example.com
-      http:
+    - http:
         paths:
           - path: /scheduling
             pathType: Prefix
