@@ -37,16 +37,16 @@ def _point(item: Any) -> tuple[float, float]:
 
 def _extract_circle(boundary: dict) -> tuple[float, float, float]:
     center = boundary.get("center")
-    if center:
+    if center and isinstance(center, (dict, list, tuple)):
         lat, lon = _point(center)
     else:
-        lat = boundary.get("latitude", boundary.get("lat"))
-        lon = boundary.get("longitude", boundary.get("lng", boundary.get("lon")))
+        lat = boundary.get("latitude") or boundary.get("lat")
+        lon = boundary.get("longitude") or boundary.get("lng") or boundary.get("lon")
         if lat is None or lon is None:
             raise ValueError("Circle geofence requires center coordinates")
         lat, lon = float(lat), float(lon)
-    radius = boundary.get("radius_m", boundary.get("radius", boundary.get("radius_meters")))
-    if radius is None or float(radius) <= 0:
+    radius = boundary.get("radius_m") or boundary.get("radius") or boundary.get("radius_meters") or 30.0
+    if float(radius) <= 0:
         raise ValueError("Circle geofence requires a positive radius")
     return lat, lon, float(radius)
 
@@ -74,10 +74,11 @@ def point_in_polygon(latitude: float, longitude: float, vertices: list[tuple[flo
     return inside
 
 
-def geofence_check(latitude: float, longitude: float, shape_type: str, boundary_data: dict) -> dict:
+def geofence_check(latitude: float, longitude: float, shape_type: Any, boundary_data: dict) -> dict:
     validate_coordinates(latitude, longitude)
-    shape = (shape_type or "circle").lower()
-    if shape == "circle":
+    raw_shape = getattr(shape_type, "value", str(shape_type or "circle"))
+    shape = str(raw_shape).lower()
+    if "circle" in shape:
         center_lat, center_lon, radius = _extract_circle(boundary_data)
         distance = calculate_distance(latitude, longitude, center_lat, center_lon)
         return {"inside": distance <= radius, "distance_meters": distance, "boundary": {"type": "circle", "radius_m": radius}}

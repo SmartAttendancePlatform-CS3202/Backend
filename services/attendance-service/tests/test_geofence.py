@@ -20,3 +20,13 @@ def test_square_vertices_outside():
 def test_invalid_coordinates():
     with pytest.raises(ValueError):
         calculate_distance(100,0,0,0)
+
+def test_enum_circle_shape():
+    from shared_core.models.enums import GeofenceShape
+    r = geofence_check(6.9271, 79.8612, GeofenceShape.circle, {"center": {"lat": 6.9271, "lng": 79.8612}, "radius_m": 50})
+    assert r["inside"] is True
+
+def test_stringified_enum_circle_shape():
+    from shared_core.models.enums import GeofenceShape
+    r = geofence_check(6.9271, 79.8612, str(GeofenceShape.circle), {"latitude": 6.9271, "longitude": 79.8612, "radius_meters": 50})
+    assert r["inside"] is True

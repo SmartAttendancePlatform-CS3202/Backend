@@ -180,6 +180,10 @@ def get_open_window(db: Session, lecture_session_id: UUID, window_type: str):
     return q.first()
 
 
+def get_window(db: Session, window_id: UUID):
+    return db.query(VerificationWindow).filter(VerificationWindow.id == window_id).first()
+
+
 def get_windows(db: Session, lecture_session_id: UUID):
     return db.query(VerificationWindow).filter(VerificationWindow.lecture_session_id == lecture_session_id).order_by(VerificationWindow.scheduled_open_at).all()
 

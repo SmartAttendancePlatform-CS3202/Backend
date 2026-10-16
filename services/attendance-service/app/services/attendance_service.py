@@ -144,12 +144,17 @@ def _venue_check(session, latitude, longitude):
                 "id": str(db_venue.id),
                 "name": db_venue.name,
                 "building": db_venue.building,
-                "shape_type": getattr(db_venue, "shape_type", "circle") or "circle",
+                "shape_type": getattr(db_venue.shape_type, "value", str(db_venue.shape_type)) if getattr(db_venue, "shape_type", None) else "circle",
                 "boundary_data": db_venue.boundary_data,
             }
         else:
             raise HTTPException(404, "Venue boundary data or geofence not configured")
-    result = geofence_check(latitude, longitude, venue["shape_type"], venue["boundary_data"])
+    raw_shape = venue.get("shape_type", "circle")
+    shape_type = getattr(raw_shape, "value", str(raw_shape))
+    boundary_data = venue.get("boundary_data")
+    if not isinstance(boundary_data, dict):
+        raise HTTPException(400, "Invalid venue boundary data")
+    result = geofence_check(latitude, longitude, shape_type, boundary_data)
     return result, venue
 
 
@@ -401,15 +406,25 @@ def get_active_windows(db: Session, lecture_session_id: UUID, student_id: UUID |
             except Exception:
                 db_venue = session.venue or (session.course_offering.venue if session.course_offering else None)
                 if db_venue and isinstance(db_venue.boundary_data, dict):
-                    lat = db_venue.boundary_data.get("latitude", 6.7951)
-                    lng = db_venue.boundary_data.get("longitude", 79.9009)
-                    rad = db_venue.boundary_data.get("radius_meters", 30)
+                    boundary = db_venue.boundary_data
+                    center = boundary.get("center") if isinstance(boundary.get("center"), dict) else {}
+                    lat = boundary.get("latitude") or boundary.get("lat") or center.get("lat") or center.get("latitude")
+                    lng = boundary.get("longitude") or boundary.get("lng") or boundary.get("lon") or center.get("lng") or center.get("longitude")
+                    rad = boundary.get("radius_meters") or boundary.get("radius_m") or boundary.get("radius") or 30
+
+                    # If polygon vertices are present without explicit center, calculate centroid
+                    if (lat is None or lng is None) and isinstance(boundary.get("vertices"), list) and len(boundary["vertices"]) > 0:
+                        valid_v = [v for v in boundary["vertices"] if isinstance(v, (list, tuple)) and len(v) >= 2]
+                        if valid_v:
+                            lat = sum(float(v[0]) for v in valid_v) / len(valid_v)
+                            lng = sum(float(v[1]) for v in valid_v) / len(valid_v)
+
                     venue_geofence = {
                         "venue_name": db_venue.name,
                         "building": db_venue.building,
-                        "latitude": float(lat),
-                        "longitude": float(lng),
-                        "radius_meters": int(rad),
+                        "latitude": float(lat) if lat is not None else 6.7951,
+                        "longitude": float(lng) if lng is not None else 79.9009,
+                        "radius_meters": int(float(rad)) if rad is not None else 30,
                     }
 
     return {
@@ -619,49 +634,45 @@ def _match_student_face(
 async def record_random_check(db: Session, student_id: UUID, payload):
     now = datetime.now(timezone.utc)
     attempt_id = uuid4()
-    session = _assert_student_enrolled(db, student_id, payload.lecture_session_id)
+
+    session_id_str = str(payload.lecture_session_id) if payload.lecture_session_id else ""
+    try:
+        session_uuid = UUID(session_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Invalid lecture session ID format")
+
+    session = _assert_student_enrolled(db, student_id, session_uuid)
     _sync_session_state(db, session)
     active = attendance_repository.get_open_window(db, session.id, "random_check")
-    if not active or active.id != payload.verification_window_id:
+
+    if payload.verification_window_id:
+        req_win_str = str(payload.verification_window_id).strip()
+        if req_win_str:
+            if not active or str(active.id) != req_win_str:
+                try:
+                    req_win_uuid = UUID(req_win_str)
+                    cand_window = attendance_repository.get_window(db, req_win_uuid)
+                    if cand_window and cand_window.is_active and getattr(cand_window.window_type, "value", str(cand_window.window_type)) == "random_check":
+                        active = cand_window
+                    else:
+                        raise HTTPException(400, "No active random verification window")
+                except ValueError:
+                    raise HTTPException(400, "Invalid verification window ID format")
+
+    if not active:
         raise HTTPException(400, "No active random verification window")
 
-    # Dual verification requirement: Student MUST have completed initial check-in first!
-    record = attendance_repository.get_attendance_record(db, session.id, student_id)
-    if not record or not record.first_check_in_at:
-        raise HTTPException(400, "Initial check-in is required before completing random verification.")
-
-    # 1. Location verification
+    # 1. Location verification (Random check uses venue geofence check only)
     geo, venue = _venue_check(session, payload.latitude, payload.longitude)
     geo_inside = bool(geo.get("inside"))
     dist_m = geo.get("distance_meters")
 
-    # 2. Face verification
-    face_emb = getattr(payload, "face_embedding", None)
-    if not face_emb or len(face_emb) != 512:
-        attendance_repository.log_attempt(db, {
-            "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
-            "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
-            "distance_from_venue_meters": dist_m, "status": AttemptStatus.failed,
-            "failure_reason": "Missing or invalid face embedding", "attempted_at": now,
-        })
-        return {
-            "status": "rejected", "attempt_id": str(attempt_id),
-            "reason": "missing_face_embedding",
-            "message": "Face verification is required for random check.",
-        }
-
-    live_depth = getattr(payload, "depth_features", None)
-    is_match, confidence, threshold, face_err, requires_re_reg = _match_student_face(
-        db, student_id, face_emb, live_depth
-    )
-
     if not geo_inside:
         attendance_repository.log_attempt(db, {
             "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+            "attempt_number": 1, "used_face_verification": False, "used_location_check": True,
             "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
-            "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
+            "distance_from_venue_meters": dist_m,
             "status": AttemptStatus.failed, "failure_reason": f"Outside geofence ({round(dist_m or 0)}m away)",
             "attempted_at": now,
         })
@@ -672,38 +683,41 @@ async def record_random_check(db: Session, student_id: UUID, payload):
             "message": f"Location verification failed: Outside geofence ({round(dist_m or 0)}m away). Attendance not marked.",
         }
 
-    if requires_re_reg or not is_match:
-        attendance_repository.log_attempt(db, {
-            "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-            "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
-            "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
-            "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
-            "status": AttemptStatus.failed, "failure_reason": face_err or "Face mismatch",
-            "attempted_at": now,
-        })
-        return {
-            "status": "rejected", "attempt_id": str(attempt_id),
-            "reason": "face_mismatch",
-            "confidence": round(confidence, 4), "threshold": threshold,
-            "message": face_err or "Face verification failed. Attendance not marked.",
-        }
-
-    # BOTH location and face verification passed!
+    # Location check passed! Log attempt
     attendance_repository.log_attempt(db, {
         "id": attempt_id, "verification_window_id": active.id, "student_id": student_id,
-        "attempt_number": 1, "used_face_verification": True, "used_location_check": True,
+        "attempt_number": 1, "used_face_verification": False, "used_location_check": True,
         "location_method": "gps_geofence", "latitude": payload.latitude, "longitude": payload.longitude,
-        "distance_from_venue_meters": dist_m, "face_match_confidence": confidence,
+        "distance_from_venue_meters": dist_m,
         "status": AttemptStatus.success, "attempted_at": now,
     })
 
-    # Finalize attendance record: student has verified both initial and random check!
+    # Retrieve or create attendance record
+    record = attendance_repository.get_attendance_record(db, session.id, student_id)
+    if not record:
+        record = AttendanceRecord(
+            id=uuid4(),
+            lecture_session_id=session.id,
+            student_id=student_id,
+            status=AttendanceStatus.absent,
+        )
+        db.add(record)
+
     record.random_check_completed_at = now
-    if not record.is_manually_overridden:
-        late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
-        is_late = record.first_check_in_at > session.scheduled_at + timedelta(minutes=late_threshold)
-        record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
-        record.flag_reason = None
+
+    is_initial_done = record.first_check_in_at is not None
+    if is_initial_done and record.first_check_in_at is not None:
+        if not record.is_manually_overridden:
+            late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
+            is_late = record.first_check_in_at > session.scheduled_at + timedelta(minutes=late_threshold)
+            record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
+            record.flag_reason = None
+        message = f"Random location check verified! Both initial biometrics and random check confirmed. Marked as {record.status.value}."
+    else:
+        if not record.is_manually_overridden:
+            record.status = AttendanceStatus.absent
+        message = "Random location check verified! Please complete initial verification to finalize full attendance."
+
     db.commit()
     db.refresh(record)
 
@@ -712,8 +726,10 @@ async def record_random_check(db: Session, student_id: UUID, payload):
         "attendance_status": record.status.value,
         "attempt_id": str(attempt_id),
         "distance_meters": round(dist_m, 2) if dist_m is not None else None,
-        "face_match_confidence": round(confidence, 4),
-        "message": "Both initial check-in and random check verified (Face + Location). Attendance successfully marked as present.",
+        "first_check_in_at": record.first_check_in_at.isoformat() if record.first_check_in_at else None,
+        "random_check_completed_at": record.random_check_completed_at.isoformat() if record.random_check_completed_at else now.isoformat(),
+        "is_fully_marked": is_initial_done,
+        "message": message,
     }
 
 
@@ -839,7 +855,7 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             "student_id": student_id,
             "attempt_number": 1,
             "used_face_verification": True,
-            "used_location_check": bool(payload.latitude is not None and payload.longitude is not None),
+            "used_location_check": payload.latitude is not None and payload.longitude is not None,
             "latitude": payload.latitude,
             "longitude": payload.longitude,
             "distance_from_venue_meters": distance_m,
@@ -879,6 +895,7 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
         random_check_enabled = bool(getattr(session.course_offering, "random_check_enabled", True))
 
     is_late = False
+    record: AttendanceRecord | None = None
     if session:
         record = attendance_repository.get_attendance_record(db, session.id, student_id)
         if not record:
@@ -894,15 +911,18 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
 
         if not record.is_manually_overridden:
             if random_check_enabled:
-                # Dual verification: Initial check-in recorded, but attendance status remains absent
-                # until random verification is completed!
-                record.status = AttendanceStatus.absent
+                # If random check was already verified, finalize full attendance!
+                if record.random_check_completed_at:
+                    record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
+                else:
+                    record.status = AttendanceStatus.absent
             else:
                 record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
 
         db.commit()
 
     if random_check_enabled:
+        is_fully_done = bool(record and record.random_check_completed_at)
         return {
             "success": True,
             "is_match": True,
@@ -911,9 +931,9 @@ def verify_face_and_record_attendance(db: Session, student_id: UUID, payload):
             "attempt_id": str(attempt_id),
             "distance_meters": round(distance_m, 2) if distance_m is not None else None,
             "verified_initial": True,
-            "attendance_marked": False,
-            "status": "pending_random_check",
-            "message": "Initial check-in verified successfully (Face + Location verified). Mid-session random verification is required to complete attendance.",
+            "attendance_marked": is_fully_done,
+            "status": record.status.value if (record and is_fully_done) else "pending_random_check",
+            "message": "Face verified! Both initial biometrics and random location confirmed. Attendance marked." if is_fully_done else "Initial check-in verified successfully (Face + Location verified). Mid-session random verification is required to complete attendance.",
         }
 
     return {
