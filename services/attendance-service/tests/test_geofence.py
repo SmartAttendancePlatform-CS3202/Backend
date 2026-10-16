@@ -30,3 +30,11 @@ def test_stringified_enum_circle_shape():
     from shared_core.models.enums import GeofenceShape
     r = geofence_check(6.9271, 79.8612, str(GeofenceShape.circle), {"latitude": 6.9271, "longitude": 79.8612, "radius_meters": 50})
     assert r["inside"] is True
+
+def test_unordered_quad_vertices_inside():
+    # Simulates row-ordered vertices (TL, TR, BL, BR) that would form a bowtie polygon if not ordered
+    quad = {"vertices": [[6.795559, 79.900916], [6.795543, 79.901272], [6.795141, 79.900866], [6.795111, 79.901216]]}
+    # Center of this venue
+    res = geofence_check(6.795335, 79.901094, "polygon", quad)
+    assert res["inside"] is True
+    assert res["distance_meters"] is not None and res["distance_meters"] < 30.0

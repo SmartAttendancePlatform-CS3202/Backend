@@ -60,6 +60,15 @@ def _extract_vertices(boundary: dict) -> list[tuple[float, float]]:
     return [_point(x) for x in raw]
 
 
+def _order_vertices_around_centroid(vertices: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Orders vertices in clockwise/counter-clockwise perimeter order around their centroid to prevent bowtie/self-intersecting polygons."""
+    if len(vertices) <= 3:
+        return vertices
+    cy = sum(v[0] for v in vertices) / len(vertices)
+    cx = sum(v[1] for v in vertices) / len(vertices)
+    return sorted(vertices, key=lambda v: math.atan2(v[0] - cy, v[1] - cx))
+
+
 def point_in_polygon(latitude: float, longitude: float, vertices: list[tuple[float, float]]) -> bool:
     inside = False
     j = len(vertices) - 1
@@ -83,10 +92,15 @@ def geofence_check(latitude: float, longitude: float, shape_type: Any, boundary_
         distance = calculate_distance(latitude, longitude, center_lat, center_lon)
         return {"inside": distance <= radius, "distance_meters": distance, "boundary": {"type": "circle", "radius_m": radius}}
 
-    # DB uses `polygon`; four vertices are treated as a square for the current implementation.
-    vertices = _extract_vertices(boundary_data)
+    # DB uses `polygon`; four vertices are treated as a square/quad for the current implementation.
+    raw_vertices = _extract_vertices(boundary_data)
+    vertices = _order_vertices_around_centroid(raw_vertices)
+    cy = sum(v[0] for v in vertices) / len(vertices)
+    cx = sum(v[1] for v in vertices) / len(vertices)
+    distance = calculate_distance(latitude, longitude, cy, cx)
+    inside = point_in_polygon(latitude, longitude, vertices)
     return {
-        "inside": point_in_polygon(latitude, longitude, vertices),
-        "distance_meters": None,
+        "inside": inside,
+        "distance_meters": distance,
         "boundary": {"type": "square" if len(vertices) == 4 else "polygon", "vertices": vertices},
     }
