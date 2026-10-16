@@ -155,9 +155,15 @@ def close_session(db: Session, session_id: UUID):
         record = existing.get(student_id)
         if record is None:
             db.add(AttendanceRecord(lecture_session_id=session.id, student_id=student_id, status=AttendanceStatus.absent))
-        elif random_required and record.first_check_in_at and record.random_check_completed_at is None and not record.is_manually_overridden:
-            record.status = AttendanceStatus.flagged_proxy
-            record.flag_reason = record.flag_reason or "Random verification not completed"
+        elif random_required:
+            if record.first_check_in_at and record.random_check_completed_at is None and not record.is_manually_overridden:
+                record.status = AttendanceStatus.flagged_proxy
+                record.flag_reason = record.flag_reason or "Random verification not completed"
+        else:
+            if record.first_check_in_at and record.status == AttendanceStatus.absent and not record.is_manually_overridden:
+                late_threshold = int(getattr(session.course_offering, "late_threshold_minutes", 10) or 10)
+                is_late = record.first_check_in_at > session.scheduled_at + timedelta(minutes=late_threshold)
+                record.status = AttendanceStatus.late if is_late else AttendanceStatus.present
     db.commit(); db.refresh(session); return session
 
 

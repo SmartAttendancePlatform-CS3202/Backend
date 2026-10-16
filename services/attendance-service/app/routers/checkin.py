@@ -99,26 +99,6 @@ def active_windows(
     current_user: User = Depends(require_role("student")),
     db: Session = Depends(get_db),
 ):
-    if lecture_session_id == "TEST_MOCK_CLASS":
-        now = datetime.now(timezone.utc)
-        return {
-            "check_in_window": {
-                "id": str(uuid4()),
-                "window_type": "check_in",
-                "is_active": True,
-                "opened_at": now.isoformat(),
-                "closed_at": (now + timedelta(hours=1)).isoformat(),
-            },
-            "random_check_active": False,
-            "random_check_window": None,
-            "venue_geofence": {
-                "venue_name": "CSE Seminar Room",
-                "building": "CSE Department, UoM",
-                "latitude": 6.7951,
-                "longitude": 79.9009,
-                "radius_meters": 30,
-            },
-        }
     try:
         session_uuid = UUID(lecture_session_id)
     except ValueError:
